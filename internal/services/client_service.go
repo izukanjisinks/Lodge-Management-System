@@ -45,7 +45,10 @@ func (s *ClientService) CreateIndividual(orgID uuid.UUID, c *models.IndividualCl
 	if c.Status == "" {
 		c.Status = models.ClientStatusActive
 	}
-	return s.repo.CreateIndividual(c, orgID)
+	if err := s.repo.CreateIndividual(c, orgID); err != nil {
+		return formatConstraintError(err)
+	}
+	return nil
 }
 
 func (s *ClientService) GetIndividualByID(id uuid.UUID, orgID uuid.UUID) (*models.IndividualClient, error) {
@@ -105,18 +108,13 @@ func (s *ClientService) LookupIndividualByIDNumber(orgID uuid.UUID, idNumber str
 
 // ─── Corporate ────────────────────────────────────────────────────────────────
 
+// CreateCorporate registers a company in cor_company_details. Company name plus
+// a reg number are required — reg number is part of the dedup key. Contact fields
+// (person/email/phone) are captured on cor_profiles through the booking chain, not
+// here, so they aren't required for a staff-created company shell.
 func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClient) error {
 	if c.CompanyName == "" {
 		return errors.New("company_name is required")
-	}
-	if c.ContactPerson == "" {
-		return errors.New("contact_person is required")
-	}
-	if c.Email == "" {
-		return errors.New("email is required")
-	}
-	if c.Phone == "" {
-		return errors.New("phone is required")
 	}
 	if c.CompanyRegNumber == "" {
 		return errors.New("company_reg_number is required")
@@ -124,7 +122,10 @@ func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClie
 	if c.Status == "" {
 		c.Status = models.ClientStatusActive
 	}
-	return s.repo.CreateCorporate(c, orgID)
+	if err := s.repo.CreateCorporate(c, orgID); err != nil {
+		return formatConstraintError(err)
+	}
+	return nil
 }
 
 func (s *ClientService) GetCorporateByID(id uuid.UUID, orgID uuid.UUID) (*models.CorporateClient, error) {
@@ -141,6 +142,9 @@ func (s *ClientService) ListCorporate(orgID uuid.UUID, search, status string, pa
 	return s.repo.ListCorporate(orgID, search, status, page, pageSize)
 }
 
+// UpdateCorporate updates the company-level fields on cor_company_details. Contact
+// person/email/phone are read-only here (they belong to cor_profiles), so edits to
+// them from the client dialog are ignored.
 func (s *ClientService) UpdateCorporate(id uuid.UUID, orgID uuid.UUID, updates *models.CorporateClient) (*models.CorporateClient, error) {
 	existing, err := s.repo.GetCorporateByID(id, orgID)
 	if err != nil {
@@ -149,25 +153,21 @@ func (s *ClientService) UpdateCorporate(id uuid.UUID, orgID uuid.UUID, updates *
 	if updates.CompanyName != "" {
 		existing.CompanyName = updates.CompanyName
 	}
-	if updates.ContactPerson != "" {
-		existing.ContactPerson = updates.ContactPerson
-	}
-	if updates.Email != "" {
-		existing.Email = updates.Email
-	}
-	if updates.Phone != "" {
-		existing.Phone = updates.Phone
-	}
 	if updates.CompanyRegNumber != "" {
 		existing.CompanyRegNumber = updates.CompanyRegNumber
+	}
+	if updates.TPIN != "" {
+		existing.TPIN = updates.TPIN
 	}
 	if updates.Industry != "" {
 		existing.Industry = updates.Industry
 	}
+	if updates.Country != "" {
+		existing.Country = updates.Country
+	}
 	if updates.Status != "" {
 		existing.Status = updates.Status
 	}
-	existing.Notes = updates.Notes
 	if err := s.repo.UpdateCorporate(existing, orgID); err != nil {
 		return nil, err
 	}

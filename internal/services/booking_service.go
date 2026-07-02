@@ -23,6 +23,7 @@ type BookingService struct {
 	eventRepo        *repository.BookingEventRepository
 	venueRepo        *repository.VenueRepository
 	orderRepo        *repository.OrderRepository
+	clientRepo       *repository.ClientRepository
 	invoiceSvc       *InvoiceService
 }
 
@@ -56,6 +57,13 @@ func (s *BookingService) SetInvoiceService(inv *InvoiceService) {
 // into orders (one per named guest, plus a buffet order for top-level items).
 func (s *BookingService) SetOrderRepository(repo *repository.OrderRepository) {
 	s.orderRepo = repo
+}
+
+// SetClientRepository wires the client repo so approved bookings populate the
+// org-scoped individual client registry (deduped on ID/passport number).
+// Optional — if unset, client materialisation is skipped.
+func (s *BookingService) SetClientRepository(repo *repository.ClientRepository) {
+	s.clientRepo = repo
 }
 
 // SubmitPending creates a parent-only booking in the 'pending' state from a customer
@@ -218,6 +226,20 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 		return nil, fmt.Errorf("failed to create attendee: %w", err)
 	}
 
+	// Populate the individual client registry (deduped on ID number). Skip if
+	// no ID number was supplied — it's the dedup key.
+	if s.clientRepo != nil && req.IdentificationCard != "" {
+		client := &models.IndividualClient{
+			FullName:         req.BookerName,
+			Email:            req.BookerEmail,
+			Phone:            req.BookerPhone,
+			IDPassportNumber: req.IdentificationCard,
+		}
+		if err = s.clientRepo.FindOrCreateIndividualInTx(tx, orgID, client); err != nil {
+			return nil, fmt.Errorf("failed to upsert client: %w", err)
+		}
+	}
+
 	// Single room assignment
 	assignment := &models.BookingRoomAssignment{
 		BookingID:  b.ID,
@@ -351,6 +373,20 @@ func (s *BookingService) CreateIndividualRooms(
 			return nil, fmt.Errorf("failed to create attendee for slot %d: %w", i+1, err)
 		}
 		createdAttendees = append(createdAttendees, *attendee)
+
+		// Populate the individual client registry (deduped on ID number). Skip
+		// attendees without an ID number — it's the dedup key.
+		if s.clientRepo != nil && attendeeIDNum != "" {
+			client := &models.IndividualClient{
+				FullName:         attendeeName,
+				Email:            attendeeEmail,
+				Phone:            attendeePhone,
+				IDPassportNumber: attendeeIDNum,
+			}
+			if err = s.clientRepo.FindOrCreateIndividualInTx(tx, orgID, client); err != nil {
+				return nil, fmt.Errorf("failed to upsert client for slot %d: %w", i+1, err)
+			}
+		}
 
 		assignment := &models.BookingRoomAssignment{
 			BookingID:  b.ID,
