@@ -305,44 +305,54 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 	}
 
 	// Accommodation: decode the stored envelope (new shape first, legacy fallback).
-	var roomID uuid.UUID
-	var checkInStr, checkOutStr string
-
 	var newPayload models.SubmitIndividualBookingRequest
 	if jsonErr := json.Unmarshal(b.Metadata, &newPayload); jsonErr == nil && newPayload.Accommodation != nil {
 		if len(newPayload.Accommodation.Rooms) == 0 {
 			return nil, errors.New("no rooms in accommodation block")
 		}
-		roomID = newPayload.Accommodation.Rooms[0].RoomID
-		checkInStr = newPayload.Accommodation.CheckIn
-		checkOutStr = newPayload.Accommodation.CheckOut
-	} else {
-		var legacy models.IndividualBookingPayload
-		if jsonErr := json.Unmarshal(b.Metadata, &legacy); jsonErr != nil {
-			return nil, errors.New("invalid booking payload")
+
+		// Resolve branch from the first room when not set on the booking.
+		branchID := b.BranchID
+		if branchID == nil {
+			firstRoom, roomErr := s.roomRepo.GetByIDUnscoped(newPayload.Accommodation.Rooms[0].RoomID)
+			if roomErr != nil {
+				return nil, errors.New("room not found")
+			}
+			branchID = firstRoom.BranchID
 		}
-		roomID = legacy.RoomID
-		checkInStr = legacy.CheckIn
-		checkOutStr = legacy.CheckOut
+
+		return s.bookingService.CreateIndividualRooms(
+			orgID,
+			branchID,
+			id,
+			b.WebUserID,
+			b.BookerName, b.BookerEmail, b.BookerPhone,
+			&newPayload,
+			b.Metadata,
+		)
 	}
 
-	checkIn := models.DateOnly{}
-	if err := checkIn.UnmarshalJSON([]byte(`"` + checkInStr + `"`)); err != nil {
-		return nil, fmt.Errorf("invalid check_in date: %w", err)
-	}
-	checkOut := models.DateOnly{}
-	if err := checkOut.UnmarshalJSON([]byte(`"` + checkOutStr + `"`)); err != nil {
-		return nil, fmt.Errorf("invalid check_out date: %w", err)
+	// Legacy single-room payload shape.
+	var legacy models.IndividualBookingPayload
+	if jsonErr := json.Unmarshal(b.Metadata, &legacy); jsonErr != nil {
+		return nil, errors.New("invalid booking payload")
 	}
 
-	room, err := s.roomRepo.GetByIDUnscoped(roomID)
+	room, err := s.roomRepo.GetByIDUnscoped(legacy.RoomID)
 	if err != nil {
 		return nil, errors.New("room not found")
 	}
 
-	nights := int(checkOut.Sub(checkIn.Time).Hours() / 24)
+	checkIn := models.DateOnly{}
+	if err := checkIn.UnmarshalJSON([]byte(`"` + legacy.CheckIn + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_in date: %w", err)
+	}
+	checkOut := models.DateOnly{}
+	if err := checkOut.UnmarshalJSON([]byte(`"` + legacy.CheckOut + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_out date: %w", err)
+	}
 
-	// Metadata = stored envelope enriched with resolved room details.
+	nights := int(checkOut.Sub(checkIn.Time).Hours() / 24)
 	meta := b.Metadata
 	var mMap map[string]interface{}
 	if json.Unmarshal(b.Metadata, &mMap) == nil {
@@ -359,7 +369,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		BookerName:  b.BookerName,
 		BookerEmail: b.BookerEmail,
 		BookerPhone: b.BookerPhone,
-		RoomID:      roomID,
+		RoomID:      legacy.RoomID,
 		CheckIn:     checkIn,
 		CheckOut:    checkOut,
 		Metadata:    meta,

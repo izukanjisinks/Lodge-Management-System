@@ -249,6 +249,140 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 	return b, nil
 }
 
+// CreateIndividualRooms materialises an approved individual accommodation request
+// that may contain multiple rooms. Each slot in rooms maps to one attendant (by
+// slot.AttendantIdx into attendants); if the attendant list is shorter than the
+// room list the booker details are used as a fallback for unmatched slots.
+func (s *BookingService) CreateIndividualRooms(
+	orgID uuid.UUID,
+	branchID *uuid.UUID,
+	promoteID uuid.UUID,
+	webUserID *uuid.UUID,
+	bookerName, bookerEmail, bookerPhone string,
+	envelope *models.SubmitIndividualBookingRequest,
+	metadata json.RawMessage,
+) (*models.Booking, error) {
+	acc := envelope.Accommodation
+	if acc == nil || len(acc.Rooms) == 0 {
+		return nil, errors.New("no rooms in accommodation block")
+	}
+
+	checkIn := models.DateOnly{}
+	if err := checkIn.UnmarshalJSON([]byte(`"` + acc.CheckIn + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_in: %w", err)
+	}
+	checkOut := models.DateOnly{}
+	if err := checkOut.UnmarshalJSON([]byte(`"` + acc.CheckOut + `"`)); err != nil {
+		return nil, fmt.Errorf("invalid check_out: %w", err)
+	}
+	if !checkOut.After(checkIn.Time) {
+		return nil, errors.New("check_out must be after check_in")
+	}
+
+	// Availability check for every room before opening the transaction.
+	for i, slot := range acc.Rooms {
+		ok, err := s.assignmentRepo.IsRoomAvailable(slot.RoomID, checkIn.Time, checkOut.Time, nil)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("room %d (%s) is not available for the selected dates", i+1, slot.RoomID)
+		}
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		ID:          promoteID,
+		OrgID:       orgID,
+		BranchID:    branchID,
+		BookingType: models.BookingTypeRoom,
+		BookerType:  models.BookerTypeIndividual,
+		BookerName:  bookerName,
+		BookerEmail: bookerEmail,
+		BookerPhone: bookerPhone,
+		WebUserID:   webUserID,
+		Status:      models.BookingStatusConfirmed,
+		Metadata:    metadata,
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to promote booking: %w", err)
+	}
+
+	attendants := envelope.Attendants
+	var createdAttendees []models.BookingAttendee
+	var createdAssignments []models.BookingRoomAssignment
+
+	for i, slot := range acc.Rooms {
+		// Resolve attendant for this slot.
+		var attendeeName, attendeeEmail, attendeePhone, attendeeIDNum string
+		isLead := i == 0
+		if slot.AttendantIdx >= 0 && slot.AttendantIdx < len(attendants) {
+			a := attendants[slot.AttendantIdx]
+			attendeeName = a.FullName
+			attendeeEmail = a.Email
+			attendeePhone = a.Phone
+			attendeeIDNum = a.IDNumber
+			isLead = a.IsLeadContact
+		} else {
+			// Fallback to booker for unmatched slots.
+			attendeeName = bookerName
+			attendeeEmail = bookerEmail
+			attendeePhone = bookerPhone
+		}
+
+		attendee := &models.BookingAttendee{
+			BookingID:          b.ID,
+			FullName:           attendeeName,
+			Email:              attendeeEmail,
+			Phone:              attendeePhone,
+			IdentificationCard: attendeeIDNum,
+			IsLeadContact:      isLead,
+		}
+		if err = s.attendeeRepo.CreateInTx(tx, attendee); err != nil {
+			return nil, fmt.Errorf("failed to create attendee for slot %d: %w", i+1, err)
+		}
+		createdAttendees = append(createdAttendees, *attendee)
+
+		assignment := &models.BookingRoomAssignment{
+			BookingID:  b.ID,
+			RoomID:     slot.RoomID,
+			AttendeeID: &attendee.ID,
+			CheckIn:    checkIn.Time,
+			CheckOut:   checkOut.Time,
+			Status:     models.AssignmentStatusConfirmed,
+		}
+		if err = s.assignmentRepo.CreateInTx(tx, assignment); err != nil {
+			return nil, fmt.Errorf("failed to create assignment for slot %d: %w", i+1, err)
+		}
+		createdAssignments = append(createdAssignments, *assignment)
+	}
+
+	total, costErr := s.assignmentRepo.SumRoomCostsInTx(tx, b.ID)
+	if costErr == nil && total > 0 {
+		_ = s.bookingRepo.UpdateTotalAmount(tx, b.ID, orgID, total)
+		b.TotalAmount = total
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	s.generateInvoice(b.ID, orgID)
+
+	b.Attendees = createdAttendees
+	b.Assignments = createdAssignments
+	return b, nil
+}
+
 // CreateIndividualEvent materialises an approved individual event request into a
 // booking: it creates the bookings spine (booker_type individual) then delegates
 // to the shared multi-session engine to create the booking_events + attendees.
