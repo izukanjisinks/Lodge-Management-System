@@ -146,11 +146,15 @@ type BookingRoomAssignment struct {
 	BookingID  uuid.UUID  `json:"booking_id"`
 	RoomID     uuid.UUID  `json:"room_id"`
 	AttendeeID *uuid.UUID `json:"attendee_id,omitempty"`
-	CheckIn    time.Time  `json:"check_in"`
-	CheckOut   time.Time  `json:"check_out"`
+	CheckIn    time.Time  `json:"check_in"`  // booked check-in date
+	CheckOut   time.Time  `json:"check_out"` // booked check-out date
 	Status     string     `json:"status"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	// Actual timestamps recorded when staff press check-in / check-out. Nil until
+	// pressed. Distinct from the booked CheckIn/CheckOut dates above.
+	CheckedInAt  *time.Time `json:"checked_in_at,omitempty"`
+	CheckedOutAt *time.Time `json:"checked_out_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 
 	// Joined
 	RoomName    string  `json:"room_name,omitempty"`

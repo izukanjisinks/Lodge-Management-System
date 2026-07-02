@@ -107,6 +107,20 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	return s.repo.Create(inv, orgID)
 }
 
+// RegenerateRoomInvoice rebuilds a room booking's invoice from its assignments,
+// billing actual nights (checked_in_at/checked_out_at) where recorded. It only
+// touches draft invoices — issued/paid/etc. are left as-is. Called when the final
+// guest on a booking checks out, so the invoice reflects the real stay. No-op if
+// there's no invoice or it isn't a draft.
+func (s *InvoiceService) RegenerateRoomInvoice(bookingID, orgID uuid.UUID) error {
+	lineItems, _, latestCheckOut, err := s.roomLineItems(bookingID)
+	if err != nil {
+		return err
+	}
+	_, err = s.repo.ReplaceRoomLineItems(bookingID, orgID, lineItems, &latestCheckOut)
+	return err
+}
+
 // roomLineItems builds invoice lines from a booking's room assignments (room stays).
 func (s *InvoiceService) roomLineItems(bookingID uuid.UUID) ([]models.InvoiceLineItem, float64, time.Time, error) {
 	assignments, err := s.assignmentRepo.GetAssignmentsForInvoice(bookingID)
@@ -119,18 +133,26 @@ func (s *InvoiceService) roomLineItems(bookingID uuid.UUID) ([]models.InvoiceLin
 	var latestCheckOut time.Time
 
 	for _, a := range assignments {
-		nights := int(math.Ceil(a.CheckOut.Sub(a.CheckIn).Hours() / 24))
+		// Bill actual nights when the guest has both checked in and out; otherwise
+		// fall back to the booked dates (invoice generated at confirmation, or a
+		// room that never recorded an actual check-in/out).
+		start, end := a.CheckIn, a.CheckOut
+		if a.CheckedInAt != nil && a.CheckedOutAt != nil {
+			start, end = *a.CheckedInAt, *a.CheckedOutAt
+		}
+		nights := int(math.Ceil(end.Sub(start).Hours() / 24))
 		if nights < 1 {
 			nights = 1
 		}
 		roomTotal := float64(nights) * a.PricePerNight
 		subtotal += roomTotal
-		if a.CheckOut.After(latestCheckOut) {
-			latestCheckOut = a.CheckOut
+		if end.After(latestCheckOut) {
+			latestCheckOut = end
 		}
 		bID := bookingID
 		lineItems = append(lineItems, models.InvoiceLineItem{
 			BookingID:   &bID,
+			LineType:    models.LineTypeRoom,
 			Description: fmt.Sprintf("%s (%s) — %d night(s) @ %.2f/night", a.RoomName, a.AttendeeName, nights, a.PricePerNight),
 			Quantity:    nights,
 			UnitPrice:   a.PricePerNight,
@@ -169,6 +191,7 @@ func (s *InvoiceService) eventLineItems(bookingID uuid.UUID) ([]models.InvoiceLi
 		bID := bookingID
 		lineItems = append(lineItems, models.InvoiceLineItem{
 			BookingID:   &bID,
+			LineType:    models.LineTypeEvent,
 			Description: fmt.Sprintf("%s — %s (%d day(s) @ %.2f/day)", venueLabel, e.EventType, days, e.Price),
 			Quantity:    days,
 			UnitPrice:   e.Price,
@@ -203,6 +226,7 @@ func (s *InvoiceService) mealLineItems(bookingID, orgID uuid.UUID) ([]models.Inv
 		bID := bookingID
 		lineItems = append(lineItems, models.InvoiceLineItem{
 			BookingID:   &bID,
+			LineType:    models.LineTypeMeal,
 			Description: desc,
 			Quantity:    it.Quantity,
 			UnitPrice:   it.UnitPrice,

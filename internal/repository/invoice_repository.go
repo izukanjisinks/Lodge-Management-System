@@ -20,6 +20,15 @@ func NewInvoiceRepository() *InvoiceRepository {
 	return &InvoiceRepository{db: database.DB}
 }
 
+// coalesceLineType defaults an unset line type to "room" (the historical default),
+// matching the column's DB default so older callers keep working.
+func coalesceLineType(t string) string {
+	if t == "" {
+		return models.LineTypeRoom
+	}
+	return t
+}
+
 // Create inserts the invoice and all its line items in a single transaction.
 func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 	inv.ID = uuid.New()
@@ -55,10 +64,11 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 		inv.LineItems[i].InvoiceID = inv.ID
 		inv.LineItems[i].CreatedAt = now
 		_, err = tx.Exec(`
-			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].BookingID,
 			inv.LineItems[i].OrderID, inv.LineItems[i].OrderItemID,
+			coalesceLineType(inv.LineItems[i].LineType),
 			inv.LineItems[i].Description, inv.LineItems[i].Quantity,
 			inv.LineItems[i].UnitPrice, inv.LineItems[i].Total,
 			inv.LineItems[i].CreatedAt,
@@ -262,10 +272,10 @@ func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.
 	}()
 
 	_, err = tx.Exec(`
-		INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
 		item.ID, invoiceID, item.BookingID, item.OrderID, item.OrderItemID,
-		item.Description, item.Quantity, item.UnitPrice, item.Total,
+		coalesceLineType(item.LineType), item.Description, item.Quantity, item.UnitPrice, item.Total,
 		item.CreatedAt,
 	)
 	if err != nil {
@@ -325,9 +335,68 @@ func (r *InvoiceRepository) RemoveOrderLineItem(bookingID uuid.UUID, orgID uuid.
 	return tx.Commit()
 }
 
+// ReplaceRoomLineItems atomically swaps a booking invoice's room lines for a fresh
+// set and recalculates totals + due date. Only room lines (line_type='room') are
+// touched — meal/event/adjustment lines are preserved. It is a guarded no-op when
+// no invoice exists or the invoice is not a draft (never rewrite an issued/paid
+// document). Returns whether a regeneration actually happened.
+func (r *InvoiceRepository) ReplaceRoomLineItems(bookingID, orgID uuid.UUID, items []models.InvoiceLineItem, dueDate *time.Time) (bool, error) {
+	inv, err := r.GetByBookingID(bookingID, orgID)
+	if err != nil {
+		return false, nil // no invoice yet
+	}
+	if inv.Status != models.InvoiceStatusDraft {
+		return false, nil // don't touch issued/paid/overdue/cancelled invoices
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	if _, err = tx.Exec(`DELETE FROM invoice_line_items WHERE invoice_id=$1 AND line_type=$2`,
+		inv.ID, models.LineTypeRoom); err != nil {
+		return false, err
+	}
+
+	now := time.Now()
+	for i := range items {
+		bID := bookingID
+		if _, err = tx.Exec(`
+			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at)
+			VALUES ($1,$2,$3,NULL,NULL,$4,$5,$6,$7,$8,$9)`,
+			uuid.New(), inv.ID, bID, models.LineTypeRoom,
+			items[i].Description, items[i].Quantity, items[i].UnitPrice, items[i].Total, now,
+		); err != nil {
+			return false, err
+		}
+	}
+
+	if _, err = tx.Exec(`
+		UPDATE invoices
+		SET subtotal   = (SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1),
+		    tax        = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * tax_rate / 100, 2),
+		    total      = ROUND((SELECT COALESCE(SUM(total), 0) FROM invoice_line_items WHERE invoice_id = $1) * (1 + tax_rate / 100), 2),
+		    due_date   = COALESCE($3, due_date),
+		    updated_at = $2
+		WHERE id = $1 AND org_id = $4`, inv.ID, now, dueDate, orgID); err != nil {
+		return false, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.InvoiceLineItem, error) {
 	rows, err := r.db.Query(`
-		SELECT id, invoice_id, booking_id, order_id, order_item_id, description, quantity, unit_price, total, created_at
+		SELECT id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at
 		FROM invoice_line_items WHERE invoice_id = $1
 		ORDER BY booking_id NULLS FIRST, created_at ASC`, invoiceID)
 	if err != nil {
@@ -339,7 +408,7 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 	for rows.Next() {
 		var item models.InvoiceLineItem
 		var bookingID, orderID, orderItemID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.InvoiceID, &bookingID, &orderID, &orderItemID, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.InvoiceID, &bookingID, &orderID, &orderItemID, &item.LineType, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if bookingID.Valid {

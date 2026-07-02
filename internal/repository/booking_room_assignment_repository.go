@@ -39,7 +39,8 @@ func (r *BookingRoomAssignmentRepository) CreateInTx(tx *sql.Tx, a *models.Booki
 func (r *BookingRoomAssignmentRepository) ListByBookingID(bookingID uuid.UUID) ([]models.BookingRoomAssignment, error) {
 	rows, err := r.db.Query(`
 		SELECT a.id, a.booking_id, a.room_id, a.attendee_id,
-		       a.check_in, a.check_out, a.status, a.created_at, a.updated_at,
+		       a.check_in, a.check_out, a.status, a.checked_in_at, a.checked_out_at,
+		       a.created_at, a.updated_at,
 		       r.name AS room_name,
 		       COALESCE(att.full_name, '') AS attendee_name,
 		       (a.check_out - a.check_in) AS nights,
@@ -68,7 +69,8 @@ func (r *BookingRoomAssignmentRepository) ListByBookingID(bookingID uuid.UUID) (
 func (r *BookingRoomAssignmentRepository) GetByID(id, bookingID uuid.UUID) (*models.BookingRoomAssignment, error) {
 	row := r.db.QueryRow(`
 		SELECT a.id, a.booking_id, a.room_id, a.attendee_id,
-		       a.check_in, a.check_out, a.status, a.created_at, a.updated_at,
+		       a.check_in, a.check_out, a.status, a.checked_in_at, a.checked_out_at,
+		       a.created_at, a.updated_at,
 		       r.name AS room_name,
 		       COALESCE(att.full_name, '') AS attendee_name,
 		       (a.check_out - a.check_in) AS nights,
@@ -97,20 +99,26 @@ func (r *BookingRoomAssignmentRepository) Update(id, bookingID uuid.UUID, req *m
 }
 
 func (r *BookingRoomAssignmentRepository) UpdateStatus(id, bookingID uuid.UUID, status string) error {
-	_, err := r.db.Exec(`
-		UPDATE booking_room_assignments SET status=$1, updated_at=$2
-		WHERE id=$3 AND booking_id=$4`,
-		status, time.Now(), id, bookingID)
+	_, err := r.db.Exec(assignmentStatusUpdateSQL, status, time.Now(), id, bookingID)
 	return err
 }
 
 func (r *BookingRoomAssignmentRepository) UpdateStatusTx(tx *sql.Tx, id, bookingID uuid.UUID, status string) error {
-	_, err := tx.Exec(`
-		UPDATE booking_room_assignments SET status=$1, updated_at=$2
-		WHERE id=$3 AND booking_id=$4`,
-		status, time.Now(), id, bookingID)
+	_, err := tx.Exec(assignmentStatusUpdateSQL, status, time.Now(), id, bookingID)
 	return err
 }
+
+// assignmentStatusUpdateSQL updates status and stamps the actual check-in/out
+// timestamp when transitioning into checked_in / checked_out. The timestamps are
+// only set the first time (COALESCE keeps an existing value), leaving the booked
+// check_in/check_out dates untouched. $1=status $2=now $3=id $4=booking_id.
+const assignmentStatusUpdateSQL = `
+	UPDATE booking_room_assignments SET
+		status = $1::text,
+		checked_in_at  = CASE WHEN $1::text = 'checked_in'  THEN COALESCE(checked_in_at, $2)  ELSE checked_in_at  END,
+		checked_out_at = CASE WHEN $1::text = 'checked_out' THEN COALESCE(checked_out_at, $2) ELSE checked_out_at END,
+		updated_at = $2
+	WHERE id = $3 AND booking_id = $4`
 
 // StatusCountsTx returns, within a transaction, the number of non-cancelled
 // assignments for a booking and how many of those are checked out. Used to roll
@@ -131,18 +139,24 @@ func (r *BookingRoomAssignmentRepository) Delete(id, bookingID uuid.UUID) error 
 }
 
 // InvoiceAssignmentRow carries the data invoice generation needs per room assignment.
+// CheckIn/CheckOut are the booked dates; CheckedInAt/CheckedOutAt are the actual
+// times (nil until the guest is checked in/out). Invoice generation bills actual
+// nights when both actual timestamps are present, else falls back to booked dates.
 type InvoiceAssignmentRow struct {
-	RoomName     string
-	AttendeeName string
-	CheckIn      time.Time
-	CheckOut     time.Time
+	RoomName      string
+	AttendeeName  string
+	CheckIn       time.Time
+	CheckOut      time.Time
+	CheckedInAt   *time.Time
+	CheckedOutAt  *time.Time
 	PricePerNight float64
 }
 
 // GetAssignmentsForInvoice returns all non-cancelled assignments for a booking with room pricing.
 func (r *BookingRoomAssignmentRepository) GetAssignmentsForInvoice(bookingID uuid.UUID) ([]InvoiceAssignmentRow, error) {
 	rows, err := r.db.Query(`
-		SELECT ro.name, COALESCE(att.full_name, ''), a.check_in, a.check_out, ro.price_per_night
+		SELECT ro.name, COALESCE(att.full_name, ''),
+		       a.check_in, a.check_out, a.checked_in_at, a.checked_out_at, ro.price_per_night
 		FROM booking_room_assignments a
 		JOIN rooms ro ON ro.id = a.room_id
 		LEFT JOIN booking_attendees att ON att.id = a.attendee_id
@@ -156,8 +170,15 @@ func (r *BookingRoomAssignmentRepository) GetAssignmentsForInvoice(bookingID uui
 	var result []InvoiceAssignmentRow
 	for rows.Next() {
 		var row InvoiceAssignmentRow
-		if err := rows.Scan(&row.RoomName, &row.AttendeeName, &row.CheckIn, &row.CheckOut, &row.PricePerNight); err != nil {
+		var checkedInAt, checkedOutAt sql.NullTime
+		if err := rows.Scan(&row.RoomName, &row.AttendeeName, &row.CheckIn, &row.CheckOut, &checkedInAt, &checkedOutAt, &row.PricePerNight); err != nil {
 			return nil, err
+		}
+		if checkedInAt.Valid {
+			row.CheckedInAt = &checkedInAt.Time
+		}
+		if checkedOutAt.Valid {
+			row.CheckedOutAt = &checkedOutAt.Time
 		}
 		result = append(result, row)
 	}
@@ -217,10 +238,12 @@ func scanAssignment(row assignmentScanner) (*models.BookingRoomAssignment, error
 	var a models.BookingRoomAssignment
 	var attendeeID uuid.NullUUID
 	var attendeeName sql.NullString
+	var checkedInAt, checkedOutAt sql.NullTime
 
 	err := row.Scan(
 		&a.ID, &a.BookingID, &a.RoomID, &attendeeID,
-		&a.CheckIn, &a.CheckOut, &a.Status, &a.CreatedAt, &a.UpdatedAt,
+		&a.CheckIn, &a.CheckOut, &a.Status, &checkedInAt, &checkedOutAt,
+		&a.CreatedAt, &a.UpdatedAt,
 		&a.RoomName, &attendeeName, &a.Nights, &a.RoomCost,
 	)
 	if err != nil {
@@ -231,6 +254,12 @@ func scanAssignment(row assignmentScanner) (*models.BookingRoomAssignment, error
 	}
 	if attendeeName.Valid {
 		a.AttendeeName = attendeeName.String
+	}
+	if checkedInAt.Valid {
+		a.CheckedInAt = &checkedInAt.Time
+	}
+	if checkedOutAt.Valid {
+		a.CheckedOutAt = &checkedOutAt.Time
 	}
 	return &a, nil
 }

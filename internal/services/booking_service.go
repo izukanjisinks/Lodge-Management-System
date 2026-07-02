@@ -1549,8 +1549,10 @@ func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) e
 	if err != nil {
 		return err
 	}
+	bookingComplete := false
 	switch {
 	case active > 0 && checkedOut == active:
+		bookingComplete = true
 		if b.Status != models.BookingStatusCheckedOut {
 			if err := s.bookingRepo.UpdateStatus(tx, id, orgID, models.BookingStatusCheckedOut); err != nil {
 				return err
@@ -1564,7 +1566,18 @@ func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) e
 		}
 	}
 
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	// Once the last guest has checked out, regenerate the (draft) invoice from
+	// actual nights stayed. Best-effort and post-commit: the actual checkout must
+	// be visible, and a regeneration failure must not undo the checkout itself.
+	if bookingComplete && s.invoiceSvc != nil {
+		_ = s.invoiceSvc.RegenerateRoomInvoice(id, orgID)
+	}
+
+	return nil
 }
 
 // ─── Attendees ────────────────────────────────────────────────────────────────
