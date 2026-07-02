@@ -148,10 +148,9 @@ func (r *BookingRepository) GetByID(id, orgID uuid.UUID) (*models.Booking, error
 	return scanBooking(row)
 }
 
-// List returns bookings filtered by org, booker/booking type, status and an
-// optional [from, to] created_at window. A non-positive pageSize fetches all
-// matching rows (used by CSV export); otherwise results are paginated.
-func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
+// buildBookingWhere constructs the shared WHERE clause and args for booking list
+// queries. Returns whereStr, args, and the next placeholder index.
+func buildBookingWhere(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) (string, []interface{}, int) {
 	args := []interface{}{orgID}
 	where := []string{"b.org_id = $1"}
 	i := 2
@@ -173,10 +172,9 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		args = append(args, status)
 		i++
 	} else {
-		// Pending bookings are unconfirmed customer submissions awaiting workflow
-		// approval. The back-office booking list hides them by default — staff act
-		// on them via the workflow task screen, not here. An explicit
-		// ?status=pending still surfaces them for anyone who wants that view.
+		// Pending bookings await workflow approval; staff act on them via the
+		// task screen, not the bookings list. An explicit ?status=pending still
+		// surfaces them for anyone who needs that view.
 		where = append(where, "b.status <> 'pending'")
 	}
 	if from != nil {
@@ -189,46 +187,38 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		args = append(args, *to)
 		i++
 	}
+	return strings.Join(where, " AND "), args, i
+}
 
-	whereStr := strings.Join(where, " AND ")
+// List returns paginated bookings for the back-office table. Only columns
+// needed to render the table rows are selected — no metadata, no child joins.
+func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
+	whereStr, args, i := buildBookingWhere(orgID, bookerType, bookingType, status, from, to)
 
 	var total int
 	if err := r.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) FROM bookings b WHERE %s`, whereStr), args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	// pageSize <= 0 means "all rows" (export). Build the LIMIT/OFFSET clause only
-	// when paginating so the export isn't capped to one page.
-	limitClause := ""
-	if pageSize > 0 {
-		args = append(args, pageSize, (page-1)*pageSize)
-		limitClause = fmt.Sprintf("LIMIT $%d OFFSET $%d", i, i+1)
-	}
+	args = append(args, pageSize, (page-1)*pageSize)
+	limitClause := fmt.Sprintf("LIMIT $%d OFFSET $%d", i, i+1)
 
 	rows, err := r.db.Query(fmt.Sprintf(`
 		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
 		       b.booking_type, b.booker_type,
 		       b.booker_name, b.booker_email, b.booker_phone,
 		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
-		       COALESCE(cd.company_name, '')      AS company_name,
-		       COALESCE(cp.first_name || ' ' || cp.last_name, '') AS profile_name,
-		       COALESCE(v.name, '')               AS venue_name,
-		       COALESCE(br.name, '')              AS branch_name,
+		       COALESCE(cd.company_name, '')                        AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '')   AS profile_name,
+		       COALESCE(v.name, '')                                  AS venue_name,
+		       COALESCE(br.name, '')                                 AS branch_name,
 		       b.total_amount, b.status, b.special_requests, b.overstayed,
-		       b.created_at, b.updated_at, b.metadata,
-		       asg.id, asg.room_id, asg.check_in, asg.check_out, asg.status, COALESCE(r.name, '')
+		       b.created_at, b.updated_at
 		FROM bookings b
 		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
 		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
 		LEFT JOIN venues              v  ON v.id  = b.venue_id
 		LEFT JOIN branches            br ON br.id = b.branch_id
-		LEFT JOIN LATERAL (
-		    SELECT bra.id, bra.room_id, bra.check_in, bra.check_out, bra.status
-		    FROM booking_room_assignments bra
-		    WHERE bra.booking_id = b.id
-		    ORDER BY bra.check_in ASC LIMIT 1
-		) asg ON TRUE
-		LEFT JOIN rooms r ON r.id = asg.room_id
 		WHERE %s
 		ORDER BY b.created_at DESC
 		%s`, whereStr, limitClause), args...)
@@ -243,10 +233,81 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 		var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
 		var bookerEmail, bookerPhone, specialRequests sql.NullString
 		var companyName, profileName, venueName, branchName sql.NullString
-		var metadata []byte
-		// lead assignment columns (nullable — individual only)
-		var asgID uuid.NullUUID
-		var asgRoomID uuid.NullUUID
+
+		if err := rows.Scan(
+			&b.ID, &b.BookingNumber, &b.OrgID, &branchID,
+			&b.BookingType, &b.BookerType,
+			&b.BookerName, &bookerEmail, &bookerPhone,
+			&webUserID, &corProfileID, &companyID, &requestID, &venueID,
+			&companyName, &profileName, &venueName, &branchName,
+			&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
+			&b.CreatedAt, &b.UpdatedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		if branchID.Valid    { b.BranchID    = &branchID.UUID }
+		if webUserID.Valid   { b.WebUserID   = &webUserID.UUID }
+		if corProfileID.Valid { b.CorProfileID = &corProfileID.UUID }
+		if companyID.Valid   { b.CompanyID   = &companyID.UUID }
+		if requestID.Valid   { b.RequestID   = &requestID.UUID }
+		if venueID.Valid     { b.VenueID     = &venueID.UUID }
+		if bookerEmail.Valid     { b.BookerEmail     = bookerEmail.String }
+		if bookerPhone.Valid     { b.BookerPhone     = bookerPhone.String }
+		if specialRequests.Valid { b.SpecialRequests = specialRequests.String }
+		if companyName.Valid  { b.CompanyName  = companyName.String }
+		if profileName.Valid  { b.ProfileName  = profileName.String }
+		if venueName.Valid    { b.VenueName    = venueName.String }
+		if branchName.Valid   { b.BranchName   = branchName.String }
+
+		bookings = append(bookings, b)
+	}
+	return bookings, total, rows.Err()
+}
+
+// ListForExport fetches all matching bookings for CSV export. Includes the lead
+// room assignment (room name, dates, nights) needed for the individual CSV
+// columns. No metadata, no pagination cap.
+func (r *BookingRepository) ListForExport(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) ([]models.Booking, error) {
+	whereStr, args, _ := buildBookingWhere(orgID, bookerType, bookingType, status, from, to)
+
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT b.id, b.booking_number, b.org_id, b.branch_id,
+		       b.booking_type, b.booker_type,
+		       b.booker_name, b.booker_email, b.booker_phone,
+		       b.web_user_id, b.cor_profile_id, b.company_id, b.request_id, b.venue_id,
+		       COALESCE(cd.company_name, '')                        AS company_name,
+		       COALESCE(cp.first_name || ' ' || cp.last_name, '')   AS profile_name,
+		       COALESCE(v.name, '')                                  AS venue_name,
+		       COALESCE(br.name, '')                                 AS branch_name,
+		       b.total_amount, b.status, b.special_requests, b.overstayed,
+		       b.created_at, b.updated_at,
+		       asg.id, asg.room_id, asg.check_in, asg.check_out, asg.status, COALESCE(r.name, '')
+		FROM bookings b
+		LEFT JOIN cor_company_details cd ON cd.id = b.company_id
+		LEFT JOIN cor_profiles        cp ON cp.id = b.cor_profile_id
+		LEFT JOIN venues              v  ON v.id  = b.venue_id
+		LEFT JOIN branches            br ON br.id = b.branch_id
+		LEFT JOIN LATERAL (
+		    SELECT bra.id, bra.room_id, bra.check_in, bra.check_out, bra.status
+		    FROM booking_room_assignments bra
+		    WHERE bra.booking_id = b.id
+		    ORDER BY bra.check_in ASC LIMIT 1
+		) asg ON TRUE
+		LEFT JOIN rooms r ON r.id = asg.room_id
+		WHERE %s
+		ORDER BY b.created_at DESC`, whereStr), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bookings []models.Booking
+	for rows.Next() {
+		var b models.Booking
+		var branchID, webUserID, corProfileID, companyID, requestID, venueID uuid.NullUUID
+		var bookerEmail, bookerPhone, specialRequests sql.NullString
+		var companyName, profileName, venueName, branchName sql.NullString
+		var asgID, asgRoomID uuid.NullUUID
 		var asgCheckIn, asgCheckOut sql.NullTime
 		var asgStatus, asgRoomName sql.NullString
 
@@ -257,25 +318,24 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 			&webUserID, &corProfileID, &companyID, &requestID, &venueID,
 			&companyName, &profileName, &venueName, &branchName,
 			&b.TotalAmount, &b.Status, &specialRequests, &b.Overstayed,
-			&b.CreatedAt, &b.UpdatedAt, &metadata,
+			&b.CreatedAt, &b.UpdatedAt,
 			&asgID, &asgRoomID, &asgCheckIn, &asgCheckOut, &asgStatus, &asgRoomName,
 		); err != nil {
-			return nil, 0, err
+			return nil, err
 		}
-		if branchID.Valid { b.BranchID = &branchID.UUID }
-		if webUserID.Valid { b.WebUserID = &webUserID.UUID }
+		if branchID.Valid    { b.BranchID    = &branchID.UUID }
+		if webUserID.Valid   { b.WebUserID   = &webUserID.UUID }
 		if corProfileID.Valid { b.CorProfileID = &corProfileID.UUID }
-		if companyID.Valid { b.CompanyID = &companyID.UUID }
-		if requestID.Valid { b.RequestID = &requestID.UUID }
-		if venueID.Valid { b.VenueID = &venueID.UUID }
-		if bookerEmail.Valid { b.BookerEmail = bookerEmail.String }
-		if bookerPhone.Valid { b.BookerPhone = bookerPhone.String }
+		if companyID.Valid   { b.CompanyID   = &companyID.UUID }
+		if requestID.Valid   { b.RequestID   = &requestID.UUID }
+		if venueID.Valid     { b.VenueID     = &venueID.UUID }
+		if bookerEmail.Valid     { b.BookerEmail     = bookerEmail.String }
+		if bookerPhone.Valid     { b.BookerPhone     = bookerPhone.String }
 		if specialRequests.Valid { b.SpecialRequests = specialRequests.String }
-		if companyName.Valid { b.CompanyName = companyName.String }
-		if profileName.Valid { b.ProfileName = profileName.String }
-		if venueName.Valid { b.VenueName = venueName.String }
-		if branchName.Valid { b.BranchName = branchName.String }
-		if len(metadata) > 0 { b.Metadata = metadata }
+		if companyName.Valid  { b.CompanyName  = companyName.String }
+		if profileName.Valid  { b.ProfileName  = profileName.String }
+		if venueName.Valid    { b.VenueName    = venueName.String }
+		if branchName.Valid   { b.BranchName   = branchName.String }
 
 		if asgID.Valid {
 			nights := 0
@@ -283,21 +343,21 @@ func (r *BookingRepository) List(orgID uuid.UUID, bookerType, bookingType, statu
 				nights = int(asgCheckOut.Time.Sub(asgCheckIn.Time).Hours() / 24)
 			}
 			a := models.BookingRoomAssignment{
-				ID:       asgID.UUID,
+				ID:        asgID.UUID,
 				BookingID: b.ID,
-				Status:   asgStatus.String,
-				RoomName: asgRoomName.String,
-				Nights:   nights,
+				Status:    asgStatus.String,
+				RoomName:  asgRoomName.String,
+				Nights:    nights,
 			}
-			if asgRoomID.Valid { a.RoomID = asgRoomID.UUID }
-			if asgCheckIn.Valid { a.CheckIn = asgCheckIn.Time }
+			if asgRoomID.Valid  { a.RoomID   = asgRoomID.UUID }
+			if asgCheckIn.Valid { a.CheckIn  = asgCheckIn.Time }
 			if asgCheckOut.Valid { a.CheckOut = asgCheckOut.Time }
 			b.Assignments = []models.BookingRoomAssignment{a}
 		}
 
 		bookings = append(bookings, b)
 	}
-	return bookings, total, rows.Err()
+	return bookings, rows.Err()
 }
 
 func (r *BookingRepository) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {

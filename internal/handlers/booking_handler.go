@@ -151,8 +151,7 @@ func parseDateRange(r *http.Request) (from, to *time.Time) {
 // venue column, individual stays have room + dates + nights, and corporate
 // (non-event) bookings show the booking sub-type and who booked.
 func (h *BookingHandler) exportCSV(w http.ResponseWriter, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) {
-	// pageSize 0 → fetch every matching row (no pagination cap).
-	bookings, _, err := h.service.List(orgID, bookerType, bookingType, status, from, to, 1, 0)
+	bookings, err := h.service.ListForExport(orgID, bookerType, bookingType, status, from, to)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return

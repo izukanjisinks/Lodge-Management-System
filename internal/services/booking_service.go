@@ -1313,6 +1313,10 @@ func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status s
 	return s.bookingRepo.List(orgID, bookerType, bookingType, status, from, to, page, pageSize)
 }
 
+func (s *BookingService) ListForExport(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) ([]models.Booking, error) {
+	return s.bookingRepo.ListForExport(orgID, bookerType, bookingType, status, from, to)
+}
+
 func (s *BookingService) ListForWebUser(webUserID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
 	return s.bookingRepo.ListByWebUserID(webUserID, page, pageSize)
 }
