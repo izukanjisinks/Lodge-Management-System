@@ -22,6 +22,9 @@ func (s *VenueService) Create(venue *models.Venue, orgID uuid.UUID) error {
 	if venue.Name == "" {
 		return errors.New("venue name is required")
 	}
+	if venue.BranchID == nil {
+		return errors.New("branch is required")
+	}
 	if !models.ValidVenueTypes[venue.VenueType] {
 		return errors.New("invalid venue type: must be conference_hall, event_space, boardroom, outdoor, or dining")
 	}

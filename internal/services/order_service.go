@@ -69,6 +69,9 @@ func (s *OrderService) PlaceWalkInOrder(orgID uuid.UUID, branchID *uuid.UUID, re
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
+	if branchID == nil {
+		return nil, errors.New("branch is required")
+	}
 	o := &models.Order{
 		BranchID: branchID,
 		Type:     models.OrderTypeWalkIn,

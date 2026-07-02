@@ -74,6 +74,9 @@ func (s *BookingService) SubmitPending(in *models.PendingBookingInput) (*models.
 	if in.BookerName == "" {
 		return nil, errors.New("booker_name is required")
 	}
+	if in.BranchID == nil {
+		return nil, errors.New("branch is required")
+	}
 	b := &models.Booking{
 		OrgID:        in.OrgID,
 		BranchID:     in.BranchID,

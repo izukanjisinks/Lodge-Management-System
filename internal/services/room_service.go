@@ -22,6 +22,9 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 	if room.Name == "" {
 		return errors.New("room name is required")
 	}
+	if room.BranchID == nil {
+		return errors.New("branch is required")
+	}
 	if !models.ValidRoomTypes[room.Type] {
 		return errors.New("invalid room type: must be single, double, suite, cabin, or conference")
 	}
