@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"time"
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
@@ -54,18 +55,32 @@ func (s *VenueService) GetByIDUnscoped(id uuid.UUID) (*models.Venue, error) {
 	return s.repo.GetByIDUnscoped(id)
 }
 
-func (s *VenueService) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string) ([]models.Venue, error) {
+func (s *VenueService) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string, from, to *time.Time) ([]models.Venue, error) {
 	if venueType != "" && !models.ValidVenueTypes[venueType] {
 		return nil, errors.New("invalid venue type filter")
 	}
-	return s.repo.GuestList(orgID, branchID, venueType)
+	if err := validateDateRange(from, to); err != nil {
+		return nil, err
+	}
+	return s.repo.GuestList(orgID, branchID, venueType, from, to)
 }
 
-func (s *VenueService) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, page, pageSize int) ([]models.Venue, int, error) {
+func (s *VenueService) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, from, to *time.Time, page, pageSize int) ([]models.Venue, int, error) {
 	if venueType != "" && !models.ValidVenueTypes[venueType] {
 		return nil, 0, errors.New("invalid venue type filter")
 	}
-	return s.repo.List(orgID, branchID, venueType, isAvailable, page, pageSize)
+	if err := validateDateRange(from, to); err != nil {
+		return nil, 0, err
+	}
+	return s.repo.List(orgID, branchID, venueType, isAvailable, from, to, page, pageSize)
+}
+
+// validateDateRange rejects an inverted [from, to] window. Either bound may be nil.
+func validateDateRange(from, to *time.Time) error {
+	if from != nil && to != nil && to.Before(*from) {
+		return errors.New("to date must not be before from date")
+	}
+	return nil
 }
 
 func (s *VenueService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Venue) (*models.Venue, error) {

@@ -36,7 +36,10 @@ func (h *VenueHandler) List(w http.ResponseWriter, r *http.Request) {
 		isAvailable = &b
 	}
 
-	venues, total, err := h.service.List(orgID, branchID, venueType, isAvailable, pag.Page, pag.PageSize)
+	// Optional [from, to] window: excludes venues already reserved in that range.
+	from, to := parseDateRange(r)
+
+	venues, total, err := h.service.List(orgID, branchID, venueType, isAvailable, from, to, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -75,7 +78,10 @@ func (h *VenueHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 
 	venueType := r.URL.Query().Get("venue_type")
 
-	venues, err := h.service.GuestList(orgID, branchID, venueType)
+	// Optional [from, to] window: excludes venues already reserved in that range.
+	from, to := parseDateRange(r)
+
+	venues, err := h.service.GuestList(orgID, branchID, venueType, from, to)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

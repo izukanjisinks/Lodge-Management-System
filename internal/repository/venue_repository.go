@@ -53,7 +53,7 @@ func (r *VenueRepository) GetByIDUnscoped(id uuid.UUID) (*models.Venue, error) {
 	return scanVenue(row)
 }
 
-func (r *VenueRepository) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, page, pageSize int) ([]models.Venue, int, error) {
+func (r *VenueRepository) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, from, to *time.Time, page, pageSize int) ([]models.Venue, int, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1"}
 	i := 2
@@ -72,6 +72,16 @@ func (r *VenueRepository) List(orgID uuid.UUID, branchID *uuid.UUID, venueType s
 		where = append(where, fmt.Sprintf("is_available = $%d", i))
 		args = append(args, *isAvailable)
 		i++
+	}
+	if clause, newI := venueDateAvailableClause("venues", from, to, i); clause != "" {
+		where = append(where, clause)
+		if from != nil {
+			args = append(args, *from)
+		}
+		if to != nil {
+			args = append(args, *to)
+		}
+		i = newI
 	}
 
 	whereStr := strings.Join(where, " AND ")
@@ -103,8 +113,38 @@ func (r *VenueRepository) List(orgID uuid.UUID, branchID *uuid.UUID, venueType s
 	return venues, total, rows.Err()
 }
 
+// venueDateAvailableClause returns a NOT EXISTS clause excluding venues that have a
+// non-cancelled/non-rejected event reservation overlapping [from, to], along with the
+// next placeholder index. Date overlap is inclusive (venue hire is day-based):
+// a reservation conflicts when be.start_date <= to AND be.end_date >= from.
+// Returns "" when no date window is supplied (from and to are both nil).
+func venueDateAvailableClause(venueTable string, from, to *time.Time, i int) (string, int) {
+	if from == nil && to == nil {
+		return "", i
+	}
+	conds := []string{
+		fmt.Sprintf("be.venue_id = %s.id", venueTable),
+		"b.status NOT IN ('cancelled', 'rejected')",
+	}
+	if from != nil {
+		conds = append(conds, fmt.Sprintf("be.end_date >= $%d", i))
+		i++
+	}
+	if to != nil {
+		conds = append(conds, fmt.Sprintf("be.start_date <= $%d", i))
+		i++
+	}
+	clause := fmt.Sprintf(`NOT EXISTS (
+		SELECT 1 FROM booking_events be
+		JOIN bookings b ON b.id = be.booking_id
+		WHERE %s
+	)`, strings.Join(conds, " AND "))
+	return clause, i
+}
+
 // GuestList lists available venues for a public org-scoped browse (no auth).
-func (r *VenueRepository) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string) ([]models.Venue, error) {
+// from/to optionally exclude venues already reserved in that date window.
+func (r *VenueRepository) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string, from, to *time.Time) ([]models.Venue, error) {
 	args := []interface{}{orgID}
 	where := []string{"org_id = $1", "is_available = TRUE"}
 	i := 2
@@ -118,6 +158,16 @@ func (r *VenueRepository) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueT
 		where = append(where, fmt.Sprintf("venue_type = $%d", i))
 		args = append(args, venueType)
 		i++
+	}
+	if clause, newI := venueDateAvailableClause("venues", from, to, i); clause != "" {
+		where = append(where, clause)
+		if from != nil {
+			args = append(args, *from)
+		}
+		if to != nil {
+			args = append(args, *to)
+		}
+		i = newI
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
