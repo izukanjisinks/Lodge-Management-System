@@ -23,12 +23,6 @@ func NewOrderRepository() *OrderRepository {
 // Create inserts a new order and all its items in a single transaction.
 // Menu item prices are snapshotted at order time.
 func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemRequest, orgID uuid.UUID) (*models.Order, error) {
-	o.ID = uuid.New()
-	now := time.Now()
-	o.CreatedAt = now
-	o.UpdatedAt = now
-	o.OrgID = orgID
-
 	tx, err := r.db.Begin()
 	if err != nil {
 		return nil, err
@@ -38,38 +32,54 @@ func (r *OrderRepository) Create(o *models.Order, items []models.PlaceOrderItemR
 			tx.Rollback()
 		}
 	}()
+	if err = r.insertInTx(tx, o, items, orgID); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return r.GetByID(o.ID, orgID)
+}
 
-	err = tx.QueryRow(`
+// CreateInTx inserts an order and its items using an existing transaction.
+// Use this when the attendees being referenced were also created in the same tx
+// and haven't been committed yet.
+func (r *OrderRepository) CreateInTx(tx *sql.Tx, o *models.Order, items []models.PlaceOrderItemRequest, orgID uuid.UUID) error {
+	return r.insertInTx(tx, o, items, orgID)
+}
+
+func (r *OrderRepository) insertInTx(tx *sql.Tx, o *models.Order, items []models.PlaceOrderItemRequest, orgID uuid.UUID) error {
+	o.ID = uuid.New()
+	now := time.Now()
+	o.CreatedAt = now
+	o.UpdatedAt = now
+	o.OrgID = orgID
+
+	err := tx.QueryRow(`
 		INSERT INTO orders (id, org_id, branch_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
 		RETURNING order_number`,
 		o.ID, orgID, o.BranchID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	for _, req := range items {
 		var price float64
-		err = tx.QueryRow(`SELECT price FROM menu_items WHERE id=$1 AND org_id=$2`, req.MenuItemID, orgID).Scan(&price)
-		if err != nil {
-			return nil, fmt.Errorf("menu item %s not found", req.MenuItemID)
+		if err = tx.QueryRow(`SELECT price FROM menu_items WHERE id=$1 AND org_id=$2`, req.MenuItemID, orgID).Scan(&price); err != nil {
+			return fmt.Errorf("menu item %s not found", req.MenuItemID)
 		}
 		subtotal := price * float64(req.Quantity)
-		_, err = tx.Exec(`
+		if _, err = tx.Exec(`
 			INSERT INTO order_items (id, order_id, menu_item_id, quantity, unit_price, subtotal, notes, created_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 			uuid.New(), o.ID, req.MenuItemID, req.Quantity, price, subtotal, req.Notes, now,
-		)
-		if err != nil {
-			return nil, err
+		); err != nil {
+			return err
 		}
 	}
-
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-	return r.GetByID(o.ID, orgID)
+	return nil
 }
 
 func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {

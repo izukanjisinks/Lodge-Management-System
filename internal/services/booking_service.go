@@ -1067,7 +1067,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 		return nil, err
 	}
 
-	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
+	if err = s.materialiseMealSessions(tx, orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
 		return nil, err
 	}
 
@@ -1120,7 +1120,7 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 		return nil, err
 	}
 
-	if err = s.materialiseMealSessions(orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
+	if err = s.materialiseMealSessions(tx, orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
 		return nil, err
 	}
 
@@ -1158,6 +1158,7 @@ func (s *BookingService) materialiseFlowBAttendees(tx *sql.Tx, b *models.Booking
 //   - Headcount/buffet mode (menu_item_id present): one Order for the whole session,
 //     quantity = pax_count, attributed to the booking (no attendee_id).
 func (s *BookingService) materialiseMealSessions(
+	tx *sql.Tx,
 	orgID, bookingID uuid.UUID,
 	meal *models.MealBlock,
 	attendants []models.CorBookingAttendant,
@@ -1208,7 +1209,7 @@ func (s *BookingService) materialiseMealSessions(
 					ScheduledFor: &scheduledFor,
 					MealPeriod:   sess.MealPeriod,
 				}
-				if _, err := s.orderRepo.Create(order, items, orgID); err != nil {
+				if err := s.orderRepo.CreateInTx(tx, order, items, orgID); err != nil {
 					return fmt.Errorf("failed to create detailed order for session %s: %w", sess.MealDate, err)
 				}
 			}
@@ -1231,7 +1232,7 @@ func (s *BookingService) materialiseMealSessions(
 				Notes:        sess.DietaryNotes,
 			}
 			items := []models.PlaceOrderItemRequest{{MenuItemID: menuItemID, Quantity: pax}}
-			if _, err := s.orderRepo.Create(order, items, orgID); err != nil {
+			if err := s.orderRepo.CreateInTx(tx, order, items, orgID); err != nil {
 				return fmt.Errorf("failed to create buffet order for session %s: %w", sess.MealDate, err)
 			}
 		}
