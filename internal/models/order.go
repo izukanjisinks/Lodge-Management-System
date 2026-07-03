@@ -32,6 +32,7 @@ type Order struct {
 	Notes         string       `json:"notes,omitempty"`
 	ScheduledFor  *time.Time   `json:"scheduled_for,omitempty"` // meal session date
 	MealPeriod    string       `json:"meal_period,omitempty"`   // breakfast|lunch|dinner
+	ServingTime   string       `json:"serving_time,omitempty"`  // HH:MM — scheduled serving time
 	Total         float64      `json:"total"`
 	Items         []OrderItem  `json:"items,omitempty"`
 	CreatedAt     time.Time    `json:"created_at"`
@@ -42,15 +43,17 @@ type Order struct {
 type NullDate = sql.NullTime
 
 type OrderItem struct {
-	ID         uuid.UUID `json:"id"`
-	OrderID    uuid.UUID `json:"order_id"`
-	MenuItemID uuid.UUID `json:"menu_item_id"`
-	ItemName   string    `json:"item_name,omitempty"`
-	Quantity   int       `json:"quantity"`
-	UnitPrice  float64   `json:"unit_price"`
-	Subtotal   float64   `json:"subtotal"`
-	Notes      string    `json:"notes,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID           uuid.UUID  `json:"id"`
+	OrderID      uuid.UUID  `json:"order_id"`
+	MenuItemID   uuid.UUID  `json:"menu_item_id"`
+	AttendeeID   *uuid.UUID `json:"attendee_id,omitempty"`
+	AttendeeName string     `json:"attendee_name,omitempty"`
+	ItemName     string     `json:"item_name,omitempty"`
+	Quantity     int        `json:"quantity"`
+	UnitPrice    float64    `json:"unit_price"`
+	Subtotal     float64    `json:"subtotal"`
+	Notes        string     `json:"notes,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
 }
 
 // PlaceOrderRequest creates a new in-house order tied to a booking.
@@ -68,9 +71,10 @@ type PlaceWalkInOrderRequest struct {
 }
 
 type PlaceOrderItemRequest struct {
-	MenuItemID uuid.UUID `json:"menu_item_id"`
-	Quantity   int       `json:"quantity"`
-	Notes      string    `json:"notes,omitempty"`
+	MenuItemID uuid.UUID  `json:"menu_item_id"`
+	AttendeeID *uuid.UUID `json:"attendee_id,omitempty"`
+	Quantity   int        `json:"quantity"`
+	Notes      string     `json:"notes,omitempty"`
 }
 
 // AddOrderItemsRequest appends items to an existing order.

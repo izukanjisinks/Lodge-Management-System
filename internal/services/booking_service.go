@@ -1179,35 +1179,34 @@ func (s *BookingService) materialiseMealSessions(
 		}
 
 		if len(sess.IndividualOrders) > 0 {
-			// Detailed mode — one order per attendant who has selections in this session.
-			byAttendant := map[int][]models.PlaceOrderItemRequest{}
+			// Detailed mode — one order per session; each item carries its attendee_id.
+			var items []models.PlaceOrderItemRequest
 			for _, io := range sess.IndividualOrders {
 				menuItemID, parseErr := uuid.Parse(io.MenuItemID)
 				if parseErr != nil || io.Quantity <= 0 {
 					continue
 				}
-				byAttendant[io.AttendantIdx] = append(byAttendant[io.AttendantIdx], models.PlaceOrderItemRequest{
+				var attendeeID *uuid.UUID
+				if io.AttendantIdx >= 0 && io.AttendantIdx < len(attendeeIDs) {
+					aid := attendeeIDs[io.AttendantIdx]
+					attendeeID = &aid
+				}
+				items = append(items, models.PlaceOrderItemRequest{
 					MenuItemID: menuItemID,
+					AttendeeID: attendeeID,
 					Quantity:   io.Quantity,
 					Notes:      io.Notes,
 				})
 			}
-			for idx, items := range byAttendant {
-				if len(items) == 0 {
-					continue
-				}
-				var attendeeID *uuid.UUID
-				if idx >= 0 && idx < len(attendeeIDs) {
-					aid := attendeeIDs[idx]
-					attendeeID = &aid
-				}
+			if len(items) > 0 {
 				order := &models.Order{
 					BranchID:     branchID,
 					BookingID:    &bookingID,
-					AttendeeID:   attendeeID,
 					Type:         models.OrderTypeInHouse,
 					ScheduledFor: &scheduledFor,
 					MealPeriod:   sess.MealPeriod,
+					ServingTime:  sess.ServingTime,
+					Notes:        sess.DietaryNotes,
 				}
 				if err := s.orderRepo.CreateInTx(tx, order, items, orgID); err != nil {
 					return fmt.Errorf("failed to create detailed order for session %s: %w", sess.MealDate, err)
@@ -1229,6 +1228,7 @@ func (s *BookingService) materialiseMealSessions(
 				Type:         models.OrderTypeInHouse,
 				ScheduledFor: &scheduledFor,
 				MealPeriod:   sess.MealPeriod,
+				ServingTime:  sess.ServingTime,
 				Notes:        sess.DietaryNotes,
 			}
 			items := []models.PlaceOrderItemRequest{{MenuItemID: menuItemID, Quantity: pax}}

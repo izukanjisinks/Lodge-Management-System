@@ -358,8 +358,9 @@ type MealBlock struct {
 // MealSession maps onto one Order row at materialise time.
 type MealSession struct {
 	SessionName       string `json:"session_name,omitempty"`
-	MealDate          string `json:"meal_date,omitempty"`   // YYYY-MM-DD
-	MealPeriod        string `json:"meal_period,omitempty"` // "breakfast"|"lunch"|"dinner"
+	MealDate          string `json:"meal_date,omitempty"`    // YYYY-MM-DD
+	MealPeriod        string `json:"meal_period,omitempty"`  // "breakfast"|"lunch"|"dinner"
+	ServingTime       string `json:"serving_time,omitempty"` // HH:MM — scheduled serving time
 	ServiceType       string `json:"service_type,omitempty"` // "buffet"|"a_la_carte"|...
 	PaxCount          int    `json:"pax_count,omitempty"`
 	MenuItemID        string `json:"menu_item_id,omitempty"` // headcount/buffet mode: the buffet item
