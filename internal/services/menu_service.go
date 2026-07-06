@@ -73,6 +73,11 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *
 		Price:       req.Price,
 		IsAvailable: true,
 	}
+	// Only buffet items carry structured buffet_data; ignore it otherwise so the
+	// DB CHECK constraint (buffet_data only for category = 'buffet') is satisfied.
+	if req.Category == "buffet" {
+		item.BuffetData = req.BuffetData
+	}
 	if err := s.repo.CreateMenuItem(item, menu.ID, orgID, branchID); err != nil {
 		return nil, err
 	}

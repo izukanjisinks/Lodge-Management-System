@@ -2,6 +2,7 @@ package repository
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -141,10 +142,10 @@ func (r *MenuRepository) CreateMenuItem(item *models.MenuItem, menuID uuid.UUID,
 	item.BranchID = branchID
 
 	_, err := r.db.Exec(`
-		INSERT INTO menu_items (id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		INSERT INTO menu_items (id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, buffet_data, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
 		item.ID, menuID, orgID, branchID, item.Name, item.Description, item.Category, item.ImageURL, item.Price, item.IsAvailable,
-		item.CreatedAt, item.UpdatedAt,
+		nullJSON(item.BuffetData), item.CreatedAt, item.UpdatedAt,
 	)
 	return err
 }
@@ -153,10 +154,11 @@ func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models
 	var item models.MenuItem
 	var description, category, imageURL sql.NullString
 	var branchID uuid.NullUUID
+	var buffetData []byte
 	err := r.db.QueryRow(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, buffet_data, created_at, updated_at
 		FROM menu_items WHERE id=$1 AND org_id=$2`, id, orgID).
-		Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt)
+		Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &buffetData, &item.CreatedAt, &item.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -171,6 +173,9 @@ func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models
 	}
 	if imageURL.Valid {
 		item.ImageURL = &imageURL.String
+	}
+	if len(buffetData) > 0 {
+		item.BuffetData = buffetData
 	}
 	return &item, nil
 }
@@ -191,7 +196,7 @@ func (r *MenuRepository) ListAvailableMenuItems(menuID uuid.UUID, category strin
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, buffet_data, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -219,7 +224,7 @@ func (r *MenuRepository) ListMenuItems(menuID uuid.UUID, orgID uuid.UUID, catego
 
 	args = append(args, pageSize, (page-1)*pageSize)
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, created_at, updated_at
+		SELECT id, menu_id, org_id, branch_id, name, description, category, image_url, price, is_available, buffet_data, created_at, updated_at
 		FROM menu_items WHERE %s
 		ORDER BY name ASC
 		LIMIT $%d OFFSET $%d`, where, len(args)-1, len(args)), args...)
@@ -255,12 +260,19 @@ func (r *MenuRepository) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *mode
 	if req.IsAvailable != nil {
 		item.IsAvailable = *req.IsAvailable
 	}
+	if req.BuffetData != nil {
+		item.BuffetData = req.BuffetData
+	}
+	// Keep the CHECK constraint satisfied: only buffet items may carry buffet_data.
+	if item.Category != "buffet" {
+		item.BuffetData = nil
+	}
 	item.UpdatedAt = time.Now()
 
 	_, err = r.db.Exec(`
-		UPDATE menu_items SET name=$1, description=$2, category=$3, image_url=$4, price=$5, is_available=$6, updated_at=$7
-		WHERE id=$8 AND org_id=$9`,
-		item.Name, item.Description, item.Category, item.ImageURL, item.Price, item.IsAvailable, item.UpdatedAt, id, orgID,
+		UPDATE menu_items SET name=$1, description=$2, category=$3, image_url=$4, price=$5, is_available=$6, buffet_data=$7, updated_at=$8
+		WHERE id=$9 AND org_id=$10`,
+		item.Name, item.Description, item.Category, item.ImageURL, item.Price, item.IsAvailable, nullJSON(item.BuffetData), item.UpdatedAt, id, orgID,
 	)
 	if err != nil {
 		return nil, err
@@ -274,7 +286,8 @@ func scanMenuItems(rows *sql.Rows) ([]models.MenuItem, error) {
 		var item models.MenuItem
 		var description, category, imageURL sql.NullString
 		var branchID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		var buffetData []byte
+		if err := rows.Scan(&item.ID, &item.MenuID, &item.OrgID, &branchID, &item.Name, &description, &category, &imageURL, &item.Price, &item.IsAvailable, &buffetData, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if branchID.Valid {
@@ -289,12 +302,24 @@ func scanMenuItems(rows *sql.Rows) ([]models.MenuItem, error) {
 		if imageURL.Valid {
 			item.ImageURL = &imageURL.String
 		}
+		if len(buffetData) > 0 {
+			item.BuffetData = buffetData
+		}
 		items = append(items, item)
 	}
 	if items == nil {
 		items = []models.MenuItem{}
 	}
 	return items, rows.Err()
+}
+
+// nullJSON maps an empty json.RawMessage to a SQL NULL so the JSONB column never
+// receives an invalid empty string. A non-empty payload is passed through as-is.
+func nullJSON(b json.RawMessage) interface{} {
+	if len(b) == 0 {
+		return nil
+	}
+	return []byte(b)
 }
 
 func (r *MenuRepository) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
