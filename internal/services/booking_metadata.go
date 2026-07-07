@@ -49,6 +49,14 @@ func buildEventMetadata(envelope *models.SubmitEventBookingRequest) json.RawMess
 		"end_date":   envelope.Event.EndDate,
 		"sessions":   sessions,
 	}
+	// Preserve the corporate billing blocks so the invoice can hydrate TPIN, GL
+	// code, cost center, department and approver (see Invoice.HydrateFromMetadata).
+	if envelope.Company != nil {
+		m["company"] = envelope.Company
+	}
+	if envelope.Approver != nil {
+		m["approver"] = envelope.Approver
+	}
 	b, _ := json.Marshal(m)
 	return b
 }
@@ -65,6 +73,14 @@ func buildMealMetadata(envelope *models.SubmitMealBookingRequest) json.RawMessag
 		"start_date": envelope.Meal.StartDate,
 		"end_date":   envelope.Meal.EndDate,
 		"headcount":  headcount,
+	}
+	// Preserve the corporate billing blocks so the invoice can hydrate TPIN, GL
+	// code, cost center, department and approver (see Invoice.HydrateFromMetadata).
+	if envelope.Company != nil {
+		m["company"] = envelope.Company
+	}
+	if envelope.Approver != nil {
+		m["approver"] = envelope.Approver
 	}
 	b, _ := json.Marshal(m)
 	return b

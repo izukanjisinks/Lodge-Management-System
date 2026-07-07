@@ -15,16 +15,16 @@ import (
 )
 
 type BookingService struct {
-	bookingRepo      *repository.BookingRepository
-	attendeeRepo     *repository.BookingAttendeeRepository
-	assignmentRepo   *repository.BookingRoomAssignmentRepository
-	requestRepo      *repository.CorporateBookingRequestRepository
-	guestRepo        *repository.CorporateGuestRepository
-	eventRepo        *repository.BookingEventRepository
-	venueRepo        *repository.VenueRepository
-	orderRepo        *repository.OrderRepository
-	clientRepo       *repository.ClientRepository
-	invoiceSvc       *InvoiceService
+	bookingRepo    *repository.BookingRepository
+	attendeeRepo   *repository.BookingAttendeeRepository
+	assignmentRepo *repository.BookingRoomAssignmentRepository
+	requestRepo    *repository.CorporateBookingRequestRepository
+	guestRepo      *repository.CorporateGuestRepository
+	eventRepo      *repository.BookingEventRepository
+	venueRepo      *repository.VenueRepository
+	orderRepo      *repository.OrderRepository
+	clientRepo     *repository.ClientRepository
+	invoiceSvc     *InvoiceService
 }
 
 func NewBookingService(
@@ -502,16 +502,16 @@ func (s *BookingService) CreateFromBooking(orgID uuid.UUID, branchID *uuid.UUID,
 	}
 
 	req := &models.CorporateBookingRequest{
-		ID:           b.ID,
-		OrgID:        orgID,
-		BranchID:     b.BranchID,
-		CorProfileID: b.CorProfileID,
-		CompanyID:    b.CompanyID,
-		WebUserID:    b.WebUserID,
-		BookingType:  corporateTypeFromBooking(b.BookingType),
-		Status:       models.CorporateBookingStatusApproved,
-		Payload:      b.Metadata,
-		ProfileName:  b.BookerName,
+		ID:              b.ID,
+		OrgID:           orgID,
+		BranchID:        b.BranchID,
+		CorProfileID:    b.CorProfileID,
+		CompanyID:       b.CompanyID,
+		WebUserID:       b.WebUserID,
+		BookingType:     corporateTypeFromBooking(b.BookingType),
+		Status:          models.CorporateBookingStatusApproved,
+		Payload:         b.Metadata,
+		ProfileName:     b.BookerName,
 		AuthoriserEmail: b.BookerEmail,
 		AuthoriserPhone: b.BookerPhone,
 	}
@@ -1290,7 +1290,6 @@ func parseEventDate(override, fallback string) time.Time {
 	}
 	return time.Now().UTC().Truncate(24 * time.Hour)
 }
-
 
 func parseGuestDates(g models.CorBookingGuestInput) (checkIn, checkOut time.Time, err error) {
 	layouts := []string{"2006-01-02", time.RFC3339}
