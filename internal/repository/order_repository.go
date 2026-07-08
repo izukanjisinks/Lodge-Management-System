@@ -90,7 +90,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	var scheduledFor models.NullDate
 	var mealPeriod, servingTime sql.NullString
 	err := r.db.QueryRow(`
-		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -116,7 +116,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		    ORDER BY bra.check_in ASC LIMIT 1
 		) asg ON TRUE
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
-		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod, &servingTime,
 			&o.CreatedAt, &o.UpdatedAt)
@@ -214,7 +214,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -254,7 +254,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		var brid, bid, aid uuid.NullUUID
 		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod, servingTime sql.NullString
 		var scheduledFor models.NullDate
-		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &notes, &o.Total,
+		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod, &servingTime,
 			&o.CreatedAt, &o.UpdatedAt); err != nil {
@@ -420,6 +420,17 @@ func (r *OrderRepository) AddItems(orderID uuid.UUID, orgID uuid.UUID, items []m
 
 // CloseOrdersForDay closes all open orders created on or before today for a given org.
 // Returns the number of orders closed.
+func (r *OrderRepository) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+	_, err := r.db.Exec(
+		`UPDATE orders SET kitchen_status=$1, updated_at=$2 WHERE id=$3 AND org_id=$4 AND status='open'`,
+		status, time.Now(), id, orgID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetByID(id, orgID)
+}
+
 func (r *OrderRepository) CloseOrdersForDay(orgID uuid.UUID) (int64, error) {
 	res, err := r.db.Exec(`
 		UPDATE orders

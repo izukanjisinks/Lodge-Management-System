@@ -22,6 +22,10 @@ func RegisterOrderRoutes(h *handlers.OrderHandler) {
 	http.HandleFunc("POST /api/v1/orders/walk-in",
 		withAuthAndRole(h.PlaceWalkInOrder, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
+	// Kitchen status
+	http.HandleFunc("PATCH /api/v1/orders/{id}/kitchen-status",
+		withAuthAndRole(h.UpdateKitchenStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
 	// Add / remove items on an existing order
 	http.HandleFunc("POST /api/v1/orders/{id}/items",
 		withAuthAndRole(h.AddItems, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))

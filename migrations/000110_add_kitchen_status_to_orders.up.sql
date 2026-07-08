@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN kitchen_status VARCHAR(20) NOT NULL DEFAULT 'new';

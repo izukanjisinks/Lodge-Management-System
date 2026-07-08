@@ -113,6 +113,16 @@ func (s *OrderService) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uui
 	return nil
 }
 
+// UpdateKitchenStatus advances the kitchen status of an open order.
+func (s *OrderService) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+	switch status {
+	case models.KitchenStatusNew, models.KitchenStatusPreparing, models.KitchenStatusReady:
+	default:
+		return nil, fmt.Errorf("invalid kitchen_status %q: must be new, preparing, or ready", status)
+	}
+	return s.repo.UpdateKitchenStatus(id, orgID, status)
+}
+
 // CloseAllOrders closes every open order for the org. Returns the count closed.
 func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
 	count, err := s.repo.CloseOrdersForDay(orgID)

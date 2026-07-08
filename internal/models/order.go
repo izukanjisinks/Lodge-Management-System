@@ -13,6 +13,10 @@ const (
 
 	OrderStatusOpen   = "open"
 	OrderStatusClosed = "closed"
+
+	KitchenStatusNew      = "new"
+	KitchenStatusPreparing = "preparing"
+	KitchenStatusReady    = "ready"
 )
 
 type Order struct {
@@ -29,6 +33,7 @@ type Order struct {
 	OrderNumber   string       `json:"order_number"`
 	Type          string       `json:"type"`
 	Status        string       `json:"status"`
+	KitchenStatus string       `json:"kitchen_status"`
 	Notes         string       `json:"notes,omitempty"`
 	ScheduledFor  *time.Time   `json:"scheduled_for,omitempty"` // meal session date
 	MealPeriod    string       `json:"meal_period,omitempty"`   // breakfast|lunch|dinner
