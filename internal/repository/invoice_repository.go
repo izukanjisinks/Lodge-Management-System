@@ -63,14 +63,21 @@ func (r *InvoiceRepository) Create(inv *models.Invoice, orgID uuid.UUID) error {
 		inv.LineItems[i].ID = uuid.New()
 		inv.LineItems[i].InvoiceID = inv.ID
 		inv.LineItems[i].CreatedAt = now
+		var paxCount sql.NullInt64
+		if inv.LineItems[i].PaxCount != nil {
+			paxCount = sql.NullInt64{Int64: int64(*inv.LineItems[i].PaxCount), Valid: true}
+		}
 		_, err = tx.Exec(`
-			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, attendee_name, pax_count, service_type, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 			inv.LineItems[i].ID, inv.ID, inv.LineItems[i].BookingID,
 			inv.LineItems[i].OrderID, inv.LineItems[i].OrderItemID,
 			coalesceLineType(inv.LineItems[i].LineType),
 			inv.LineItems[i].Description, inv.LineItems[i].Quantity,
 			inv.LineItems[i].UnitPrice, inv.LineItems[i].Total,
+			sql.NullString{String: inv.LineItems[i].AttendeeName, Valid: inv.LineItems[i].AttendeeName != ""},
+			paxCount,
+			sql.NullString{String: inv.LineItems[i].ServiceType, Valid: inv.LineItems[i].ServiceType != ""},
 			inv.LineItems[i].CreatedAt,
 		)
 		if err != nil {
@@ -271,11 +278,16 @@ func (r *InvoiceRepository) AppendOrderLineItem(invoiceID uuid.UUID, orgID uuid.
 		}
 	}()
 
+	var paxCount sql.NullInt64
+	if item.PaxCount != nil {
+		paxCount = sql.NullInt64{Int64: int64(*item.PaxCount), Valid: true}
+	}
 	_, err = tx.Exec(`
-		INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		INSERT INTO invoice_line_items (id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, attendee_name, pax_count, service_type, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		item.ID, invoiceID, item.BookingID, item.OrderID, item.OrderItemID,
 		coalesceLineType(item.LineType), item.Description, item.Quantity, item.UnitPrice, item.Total,
+		sql.NullString{String: item.AttendeeName, Valid: item.AttendeeName != ""}, paxCount, sql.NullString{String: item.ServiceType, Valid: item.ServiceType != ""},
 		item.CreatedAt,
 	)
 	if err != nil {
@@ -396,7 +408,7 @@ func (r *InvoiceRepository) ReplaceRoomLineItems(bookingID, orgID uuid.UUID, ite
 
 func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.InvoiceLineItem, error) {
 	rows, err := r.db.Query(`
-		SELECT id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, created_at
+		SELECT id, invoice_id, booking_id, order_id, order_item_id, line_type, description, quantity, unit_price, total, attendee_name, pax_count, service_type, created_at
 		FROM invoice_line_items WHERE invoice_id = $1
 		ORDER BY booking_id NULLS FIRST, created_at ASC`, invoiceID)
 	if err != nil {
@@ -408,7 +420,9 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 	for rows.Next() {
 		var item models.InvoiceLineItem
 		var bookingID, orderID, orderItemID uuid.NullUUID
-		if err := rows.Scan(&item.ID, &item.InvoiceID, &bookingID, &orderID, &orderItemID, &item.LineType, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &item.CreatedAt); err != nil {
+		var attendeeName, serviceType sql.NullString
+		var paxCount sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.InvoiceID, &bookingID, &orderID, &orderItemID, &item.LineType, &item.Description, &item.Quantity, &item.UnitPrice, &item.Total, &attendeeName, &paxCount, &serviceType, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if bookingID.Valid {
@@ -419,6 +433,16 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 		}
 		if orderItemID.Valid {
 			item.OrderItemID = &orderItemID.UUID
+		}
+		if attendeeName.Valid {
+			item.AttendeeName = attendeeName.String
+		}
+		if paxCount.Valid {
+			v := int(paxCount.Int64)
+			item.PaxCount = &v
+		}
+		if serviceType.Valid {
+			item.ServiceType = serviceType.String
 		}
 		items = append(items, item)
 	}

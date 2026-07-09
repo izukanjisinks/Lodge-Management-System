@@ -207,30 +207,33 @@ func (s *InvoiceService) mealLineItems(bookingID, orgID uuid.UUID) ([]models.Inv
 	if s.orderRepo == nil {
 		return nil, 0, time.Time{}, errors.New("orders are not configured; cannot invoice meals booking")
 	}
-	items, attendeeNames, err := s.orderRepo.ListItemsByBookingID(bookingID, orgID)
+	mealItems, err := s.orderRepo.ListMealItemsForInvoice(bookingID, orgID)
 	if err != nil {
 		return nil, 0, time.Time{}, err
 	}
-	if len(items) == 0 {
+	if len(mealItems) == 0 {
 		return nil, 0, time.Time{}, errors.New("no meal orders found for booking")
 	}
 
 	var lineItems []models.InvoiceLineItem
 	subtotal := 0.0
-	for idx, it := range items {
+	for _, mi := range mealItems {
+		it := mi.Item
 		subtotal += it.Subtotal
-		desc := fmt.Sprintf("%s — %d @ %.2f", it.ItemName, it.Quantity, it.UnitPrice)
-		if who := attendeeNames[idx]; who != "" {
-			desc = fmt.Sprintf("%s (%s)", desc, who)
-		}
 		bID := bookingID
+		// Keep the description to the item name; the invoice UI formats quantity,
+		// price, per-diner grouping and buffet "for N guests" from the structured
+		// fields below (attendee_name / pax_count / service_type).
 		lineItems = append(lineItems, models.InvoiceLineItem{
-			BookingID:   &bID,
-			LineType:    models.LineTypeMeal,
-			Description: desc,
-			Quantity:    it.Quantity,
-			UnitPrice:   it.UnitPrice,
-			Total:       it.Subtotal,
+			BookingID:    &bID,
+			LineType:     models.LineTypeMeal,
+			Description:  it.ItemName,
+			Quantity:     it.Quantity,
+			UnitPrice:    it.UnitPrice,
+			Total:        it.Subtotal,
+			AttendeeName: mi.AttendeeName,
+			PaxCount:     mi.PaxCount,
+			ServiceType:  mi.ServiceType,
 		})
 	}
 	// Meals have no checkout date; due date defaults to today (caller's now()).

@@ -1206,6 +1206,7 @@ func (s *BookingService) materialiseMealSessions(
 					ScheduledFor: &scheduledFor,
 					MealPeriod:   sess.MealPeriod,
 					ServingTime:  sess.ServingTime,
+					ServiceType:  sess.ServiceType,
 					Notes:        sess.DietaryNotes,
 				}
 				if err := s.orderRepo.CreateInTx(tx, order, items, orgID); err != nil {
@@ -1222,6 +1223,10 @@ func (s *BookingService) materialiseMealSessions(
 			if pax <= 0 {
 				pax = 1
 			}
+			serviceType := sess.ServiceType
+			if serviceType == "" {
+				serviceType = "buffet"
+			}
 			order := &models.Order{
 				BranchID:     branchID,
 				BookingID:    &bookingID,
@@ -1229,9 +1234,13 @@ func (s *BookingService) materialiseMealSessions(
 				ScheduledFor: &scheduledFor,
 				MealPeriod:   sess.MealPeriod,
 				ServingTime:  sess.ServingTime,
+				PaxCount:     &pax,
+				ServiceType:  serviceType,
 				Notes:        sess.DietaryNotes,
 			}
-			items := []models.PlaceOrderItemRequest{{MenuItemID: menuItemID, Quantity: pax}}
+			// A buffet is billed as a flat package (quantity = 1), not per head. The
+			// cover count is kept on the order (PaxCount) for display context only.
+			items := []models.PlaceOrderItemRequest{{MenuItemID: menuItemID, Quantity: 1}}
 			if err := s.orderRepo.CreateInTx(tx, order, items, orgID); err != nil {
 				return fmt.Errorf("failed to create buffet order for session %s: %w", sess.MealDate, err)
 			}

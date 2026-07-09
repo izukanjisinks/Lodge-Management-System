@@ -55,11 +55,15 @@ func (r *OrderRepository) insertInTx(tx *sql.Tx, o *models.Order, items []models
 	o.UpdatedAt = now
 	o.OrgID = orgID
 
+	var paxCount sql.NullInt64
+	if o.PaxCount != nil {
+		paxCount = sql.NullInt64{Int64: int64(*o.PaxCount), Valid: true}
+	}
 	err := tx.QueryRow(`
-		INSERT INTO orders (id, org_id, branch_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, serving_time, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		INSERT INTO orders (id, org_id, branch_id, booking_id, attendee_id, type, status, notes, scheduled_for, meal_period, serving_time, pax_count, service_type, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
 		RETURNING order_number`,
-		o.ID, orgID, o.BranchID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, sql.NullString{String: o.ServingTime, Valid: o.ServingTime != ""}, now, now,
+		o.ID, orgID, o.BranchID, o.BookingID, o.AttendeeID, o.Type, models.OrderStatusOpen, o.Notes, o.ScheduledFor, o.MealPeriod, sql.NullString{String: o.ServingTime, Valid: o.ServingTime != ""}, paxCount, sql.NullString{String: o.ServiceType, Valid: o.ServiceType != ""}, now, now,
 	).Scan(&o.OrderNumber)
 	if err != nil {
 		return err
@@ -88,7 +92,8 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	var notes, bookingNumber, roomName, clientName, companyName, attendeeName sql.NullString
 
 	var scheduledFor models.NullDate
-	var mealPeriod, servingTime sql.NullString
+	var mealPeriod, servingTime, serviceType sql.NullString
+	var paxCount sql.NullInt64
 	err := r.db.QueryRow(`
 		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
@@ -97,7 +102,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
 		       cd.company_name,
 		       COALESCE(att.full_name, lead.full_name) AS attendee_name,
-		       o.scheduled_for, o.meal_period, o.serving_time,
+		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b    ON b.id = o.booking_id
@@ -118,7 +123,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
 		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
-			&scheduledFor, &mealPeriod, &servingTime,
+			&scheduledFor, &mealPeriod, &servingTime, &paxCount, &serviceType,
 			&o.CreatedAt, &o.UpdatedAt)
 	if scheduledFor.Valid {
 		o.ScheduledFor = &scheduledFor.Time
@@ -128,6 +133,13 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	}
 	if servingTime.Valid {
 		o.ServingTime = servingTime.String
+	}
+	if paxCount.Valid {
+		v := int(paxCount.Int64)
+		o.PaxCount = &v
+	}
+	if serviceType.Valid {
+		o.ServiceType = serviceType.String
 	}
 	if err != nil {
 		return nil, err
@@ -221,7 +233,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		       COALESCE(NULLIF(att.full_name, ''), NULLIF(cd.company_name, ''), b.booker_name) AS client_name,
 		       cd.company_name,
 		       COALESCE(att.full_name, lead.full_name) AS attendee_name,
-		       o.scheduled_for, o.meal_period, o.serving_time,
+		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b    ON b.id = o.booking_id
@@ -252,11 +264,12 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	for rows.Next() {
 		var o models.Order
 		var brid, bid, aid uuid.NullUUID
-		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod, servingTime sql.NullString
+		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod, servingTime, serviceType sql.NullString
 		var scheduledFor models.NullDate
+		var paxCount sql.NullInt64
 		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
-			&scheduledFor, &mealPeriod, &servingTime,
+			&scheduledFor, &mealPeriod, &servingTime, &paxCount, &serviceType,
 			&o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
@@ -295,6 +308,13 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		}
 		if servingTime.Valid {
 			o.ServingTime = servingTime.String
+		}
+		if paxCount.Valid {
+			v := int(paxCount.Int64)
+			o.PaxCount = &v
+		}
+		if serviceType.Valid {
+			o.ServiceType = serviceType.String
 		}
 		orders = append(orders, o)
 	}
@@ -524,6 +544,67 @@ func (r *OrderRepository) ListItemsByBookingID(bookingID, orgID uuid.UUID) ([]mo
 		attendeeNames = append(attendeeNames, item.AttendeeName)
 	}
 	return items, attendeeNames, rows.Err()
+}
+
+// MealInvoiceItem is one order item enriched with its parent order's session context,
+// used to build grouped/buffet-aware invoice lines for a meals booking.
+type MealInvoiceItem struct {
+	Item         models.OrderItem
+	AttendeeName string
+	ServiceType  string
+	PaxCount     *int
+}
+
+// ListMealItemsForInvoice returns every order item across a booking's meal orders
+// along with the session-level service_type and pax_count from the parent order.
+func (r *OrderRepository) ListMealItemsForInvoice(bookingID, orgID uuid.UUID) ([]MealInvoiceItem, error) {
+	rows, err := r.db.Query(`
+		SELECT oi.id, oi.order_id, oi.menu_item_id, oi.attendee_id,
+		       COALESCE(att.full_name, '') AS attendee_name,
+		       mi.name, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at,
+		       o.service_type, o.pax_count
+		FROM order_items oi
+		JOIN orders     o   ON o.id  = oi.order_id
+		JOIN menu_items mi  ON mi.id = oi.menu_item_id
+		LEFT JOIN booking_attendees att ON att.id = oi.attendee_id
+		WHERE o.booking_id = $1 AND o.org_id = $2
+		ORDER BY o.scheduled_for ASC NULLS LAST, att.full_name ASC NULLS LAST, oi.created_at ASC`, bookingID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MealInvoiceItem
+	for rows.Next() {
+		var item models.OrderItem
+		var attendeeID uuid.NullUUID
+		var attendeeName, notes, serviceType sql.NullString
+		var paxCount sql.NullInt64
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.MenuItemID, &attendeeID, &attendeeName,
+			&item.ItemName, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt,
+			&serviceType, &paxCount); err != nil {
+			return nil, err
+		}
+		if attendeeID.Valid {
+			item.AttendeeID = &attendeeID.UUID
+		}
+		if attendeeName.Valid {
+			item.AttendeeName = attendeeName.String
+		}
+		if notes.Valid {
+			item.Notes = notes.String
+		}
+		mi := MealInvoiceItem{Item: item, AttendeeName: item.AttendeeName}
+		if serviceType.Valid {
+			mi.ServiceType = serviceType.String
+		}
+		if paxCount.Valid {
+			v := int(paxCount.Int64)
+			mi.PaxCount = &v
+		}
+		out = append(out, mi)
+	}
+	return out, rows.Err()
 }
 
 func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, error) {

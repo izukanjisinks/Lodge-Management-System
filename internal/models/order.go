@@ -38,6 +38,8 @@ type Order struct {
 	ScheduledFor  *time.Time   `json:"scheduled_for,omitempty"` // meal session date
 	MealPeriod    string       `json:"meal_period,omitempty"`   // breakfast|lunch|dinner
 	ServingTime   string       `json:"serving_time,omitempty"`  // HH:MM — scheduled serving time
+	PaxCount      *int         `json:"pax_count,omitempty"`     // cover count for the session (display context, not a price multiplier)
+	ServiceType   string       `json:"service_type,omitempty"`  // buffet|individual_order|set_menu|a_la_carte|mixed
 	Total         float64      `json:"total"`
 	Items         []OrderItem  `json:"items,omitempty"`
 	CreatedAt     time.Time    `json:"created_at"`

@@ -40,7 +40,12 @@ type InvoiceLineItem struct {
 	Quantity    int        `json:"quantity"`
 	UnitPrice   float64    `json:"unit_price"`
 	Total       float64    `json:"total"`
-	CreatedAt   time.Time  `json:"created_at"`
+	// Meal-line display context (see mealLineItems). Used by the invoice UI to group
+	// items by diner and label buffet package lines; NULL/empty for room/event lines.
+	AttendeeName string `json:"attendee_name,omitempty"` // diner for individual-order lines
+	PaxCount     *int   `json:"pax_count,omitempty"`     // cover count for buffet "for N guests" context
+	ServiceType  string `json:"service_type,omitempty"`  // buffet|individual_order|set_menu|a_la_carte|mixed
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Invoice struct {
