@@ -518,6 +518,27 @@ func (s *BookingService) CreateFromBooking(orgID uuid.UUID, branchID *uuid.UUID,
 	return s.createCorporateBooking(orgID, branchID, req, matReq, b.WebUserID, &bookingID)
 }
 
+// CreateCorporateAccommodation materialises a corporate accommodation envelope
+// directly into a confirmed booking + room assignments, without a pending state.
+// The caller supplies the resolved company/profile IDs and the per-attendant room
+// assignments (matReq). Used by the staff walk-in path.
+func (s *BookingService) CreateCorporateAccommodation(orgID uuid.UUID, branchID *uuid.UUID, corProfileID, companyID *uuid.UUID, envelope *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+	payloadBytes, _ := json.Marshal(envelope)
+	req := &models.CorporateBookingRequest{
+		OrgID:           orgID,
+		BranchID:        branchID,
+		CorProfileID:    corProfileID,
+		CompanyID:       companyID,
+		BookingType:     models.CorporateBookingTypeAccommodation,
+		Status:          models.CorporateBookingStatusApproved,
+		Payload:         json.RawMessage(payloadBytes),
+		ProfileName:     envelope.BookedBy.Name,
+		AuthoriserEmail: envelope.BookedBy.Email,
+		AuthoriserPhone: envelope.BookedBy.Phone,
+	}
+	return s.createCorporateBooking(orgID, branchID, req, matReq, nil, nil)
+}
+
 // createCorporateBooking is the shared materialise body. promoteID, when set,
 // promotes that pending booking in place rather than inserting a new row.
 func (s *BookingService) createCorporateBooking(orgID uuid.UUID, branchID *uuid.UUID, req *models.CorporateBookingRequest, matReq *models.MaterialiseRequest, webUserID *uuid.UUID, promoteID *uuid.UUID) (*models.Booking, error) {
@@ -1068,6 +1089,67 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 	}
 
 	if err = s.materialiseMealSessions(tx, orgID, b.ID, envelope.Meal, envelope.Attendants, attendeeIDs, b.BranchID); err != nil {
+		return nil, err
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	go s.generateInvoice(b.ID, orgID)
+	return s.bookingRepo.GetByID(b.ID, orgID)
+}
+
+// CreateCorporateEvent materialises a corporate event envelope (Flow B) directly
+// into a confirmed booking + event sessions, without going through the pending
+// state. Mirrors CreateCorporateMeal for the event session engine. Used by the
+// staff walk-in path where no approval step is needed.
+func (s *BookingService) CreateCorporateEvent(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitEventBookingRequest) (*models.Booking, error) {
+	if envelope.Event == nil || len(envelope.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+
+	// The booking lives on the lodge branch the first session's venue sits at,
+	// falling back to the envelope's branch.
+	branchID := envelope.BranchID
+	if vID, perr := uuid.Parse(envelope.Event.Sessions[0].VenueID); perr == nil {
+		if venue, verr := s.venueRepo.GetByID(vID, orgID); verr == nil && venue.BranchID != nil {
+			branchID = venue.BranchID
+		}
+	}
+
+	tx, err := s.bookingRepo.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	b := &models.Booking{
+		OrgID:        orgID,
+		BranchID:     branchID,
+		BookingType:  models.BookingTypeEvent,
+		BookerType:   models.BookerTypeCorporate,
+		BookerName:   envelope.BookedBy.Name,
+		BookerEmail:  envelope.BookedBy.Email,
+		BookerPhone:  envelope.BookedBy.Phone,
+		CorProfileID: corProfileID,
+		CompanyID:    companyID,
+		WebUserID:    webUserID,
+		Status:       models.BookingStatusConfirmed,
+		Metadata:     buildEventMetadata(envelope),
+	}
+	if promoteID != nil {
+		b.ID = *promoteID
+	}
+	if err = s.bookingRepo.CreateOrPromote(tx, b); err != nil {
+		return nil, fmt.Errorf("failed to create event booking: %w", err)
+	}
+
+	if _, err = s.materialiseEventSessions(tx, orgID, b, envelope.Event, envelope.Attendants); err != nil {
 		return nil, err
 	}
 

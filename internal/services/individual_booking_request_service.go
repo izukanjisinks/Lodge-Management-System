@@ -175,6 +175,57 @@ func (s *IndividualBookingRequestService) SubmitMeal(guestID uuid.UUID, req *mod
 	return booking, nil
 }
 
+// WalkInMeal creates a confirmed individual meal booking directly (no pending state,
+// no approval workflow) — for a walk-in guest booking in person. Materialises orders
+// immediately via CreateIndividualMeal with no web user attached.
+func (s *IndividualBookingRequestService) WalkInMeal(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Meal == nil || len(req.Meal.Sessions) == 0 {
+		return nil, errors.New("at least one meal session is required")
+	}
+	req.OrgID = orgID
+	metadata, _ := json.Marshal(req)
+	return s.bookingService.CreateIndividualMeal(orgID, nil, nil, req, metadata)
+}
+
+// WalkInEvent creates a confirmed individual event booking directly (no pending
+// state, no approval workflow). Materialises event sessions immediately.
+func (s *IndividualBookingRequestService) WalkInEvent(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Event == nil || len(req.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+	req.OrgID = orgID
+	metadata, _ := json.Marshal(req)
+	return s.bookingService.CreateIndividualEvent(orgID, nil, nil, req, metadata)
+}
+
+// WalkInAccommodation creates a confirmed individual accommodation booking directly
+// (no pending state, no approval) with one attendee + room assignment per room slot.
+// Supports multiple named guests, each assigned their own room.
+func (s *IndividualBookingRequestService) WalkInAccommodation(orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Accommodation == nil || len(req.Accommodation.Rooms) == 0 {
+		return nil, errors.New("at least one room is required")
+	}
+	req.OrgID = orgID
+	if branchID != nil {
+		req.BranchID = branchID
+	}
+	metadata, _ := json.Marshal(req)
+	return s.bookingService.CreateIndividualRooms(
+		orgID, branchID, uuid.Nil, nil,
+		req.BookedBy.Name, req.BookedBy.Email, req.BookedBy.Phone,
+		req, metadata,
+	)
+}
+
 // ─── Web user ─────────────────────────────────────────────────────────────────
 
 // GetForWebUser returns a single booking owned by the web user, shaped as a request.

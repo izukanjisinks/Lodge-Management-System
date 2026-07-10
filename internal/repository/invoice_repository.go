@@ -453,16 +453,22 @@ func (r *InvoiceRepository) fetchLineItems(invoiceID uuid.UUID) ([]models.Invoic
 }
 
 // GenerateInvoiceNumber produces a sequential human-readable number like INV-2026-0001.
+// GenerateInvoiceNumber returns the next INV-<year>-<NNNN> number for the current
+// year. It derives NNNN from the MAX existing suffix (not COUNT) so deleting an
+// invoice never causes the next number to collide with an existing one.
 func (r *InvoiceRepository) GenerateInvoiceNumber() (string, error) {
-	var count int
 	year := time.Now().Year()
+	prefix := fmt.Sprintf("INV-%d-", year)
+	var maxSeq int
+	// Parse the numeric suffix of this year's invoice numbers and take the max.
 	err := r.db.QueryRow(`
-		SELECT COUNT(*) FROM invoices
-		WHERE EXTRACT(YEAR FROM created_at) = $1`, year).Scan(&count)
+		SELECT COALESCE(MAX(CAST(substring(invoice_number FROM '[0-9]+$') AS INTEGER)), 0)
+		FROM invoices
+		WHERE invoice_number LIKE $1`, prefix+"%").Scan(&maxSeq)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("INV-%d-%04d", year, count+1), nil
+	return fmt.Sprintf("%s%04d", prefix, maxSeq+1), nil
 }
 
 type invoiceScanner interface {

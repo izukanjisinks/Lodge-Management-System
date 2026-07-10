@@ -167,6 +167,7 @@ func main() {
 	indvBookingReqSvc := services.NewIndividualBookingRequestService(indvBookingReqRepo, roomRepo, bookingSvc)
 	indvBookingReqSvc.SetWorkflowService(workflowService)
 	indvBookingReqHandler := handlers.NewIndividualBookingRequestHandler(indvBookingReqSvc)
+	walkInBookingHandler := handlers.NewWalkInBookingHandler(indvBookingReqSvc, corpBookingReqSvc)
 
 	// Wire the booking-request services back into the workflow so a terminal workflow
 	// outcome (final approve / reject) materialises or rejects the underlying request.
@@ -207,6 +208,7 @@ func main() {
 		indvBookingReqHandler,
 		venueHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
+	routes.RegisterWalkInBookingRoutes(walkInBookingHandler)
 
 	// Apply CORS middleware globally
 	handler := middleware.Logger(middleware.CORS(http.DefaultServeMux))

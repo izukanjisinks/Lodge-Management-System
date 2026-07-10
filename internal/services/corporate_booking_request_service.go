@@ -315,6 +315,97 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 	return booking, nil
 }
 
+// resolveCorporateChain get-or-creates the company → branch → profile chain from a
+// booked_by + company block, returning the resolved company and profile IDs. Shared
+// by the website submit and the staff walk-in paths.
+func (s *CorporateBookingRequestService) resolveCorporateChain(orgID uuid.UUID, comp *models.CorSubmitCompany, bookedBy models.CorSubmitBookedBy) (companyID, profileID uuid.UUID, err error) {
+	company := models.CorBookingCompanyInput{
+		CompanyName: comp.Name,
+		TPIN:        comp.TPIN,
+		Industry:    comp.Industry,
+	}
+	var branch *models.CorBookingBranchInput
+	if comp.BranchName != "" {
+		branch = &models.CorBookingBranchInput{Name: comp.BranchName}
+	}
+	firstName, lastName := splitName(bookedBy.Name)
+	profile := models.CorBookingProfileInput{
+		FirstName:  firstName,
+		LastName:   lastName,
+		Email:      bookedBy.Email,
+		Phone:      bookedBy.Phone,
+		JobTitle:   bookedBy.JobTitle,
+		ManNumber:  bookedBy.ManNumber,
+		Department: comp.DepartmentName,
+	}
+	companyID, _, profileID, err = s.corProfile.ResolveChain(orgID, company, branch, profile)
+	return companyID, profileID, err
+}
+
+// WalkInMeal creates a confirmed corporate meal booking directly (no pending state,
+// no approval workflow) — for a corporate client booking in person at the desk. It
+// resolves the company/profile chain then materialises via CreateCorporateMeal.
+func (s *CorporateBookingRequestService) WalkInMeal(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Meal == nil || len(req.Meal.Sessions) == 0 {
+		return nil, errors.New("at least one meal session is required")
+	}
+	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	if err != nil {
+		return nil, err
+	}
+	return s.booking.CreateCorporateMeal(orgID, &profileID, &companyID, nil, nil, req)
+}
+
+// WalkInEvent creates a confirmed corporate event booking directly (no pending state,
+// no approval workflow). Resolves the company/profile chain then materialises via
+// CreateCorporateEvent.
+func (s *CorporateBookingRequestService) WalkInEvent(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Event == nil || len(req.Event.Sessions) == 0 {
+		return nil, errors.New("at least one event session is required")
+	}
+	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	if err != nil {
+		return nil, err
+	}
+	return s.booking.CreateCorporateEvent(orgID, &profileID, &companyID, nil, nil, req)
+}
+
+// WalkInAccommodation creates a confirmed corporate accommodation booking directly
+// (no pending state, no approval). Resolves the company/profile chain, then
+// materialises the booking + per-attendant room assignments. matReq carries one
+// assignment (guest_index → room_id) per attendant in the envelope.
+func (s *CorporateBookingRequestService) WalkInAccommodation(orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+	if req.BookedBy.Name == "" {
+		return nil, errors.New("booked_by name is required")
+	}
+	if req.Company == nil || req.Company.Name == "" {
+		return nil, errors.New("company name is required")
+	}
+	if req.Accommodation == nil {
+		return nil, errors.New("accommodation block is required")
+	}
+	if matReq == nil || len(matReq.Assignments) == 0 {
+		return nil, errors.New("room assignments are required")
+	}
+	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	if err != nil {
+		return nil, err
+	}
+	return s.booking.CreateCorporateAccommodation(orgID, branchID, &profileID, &companyID, req, matReq)
+}
+
 // ─── Backoffice ───────────────────────────────────────────────────────────────
 
 // GetByID returns a pending corporate booking shaped as a CorporateBookingRequest so

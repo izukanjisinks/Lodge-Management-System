@@ -2,6 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npx vue-tsc *)"
+    ],
+    "additionalDirectories": [
+      "C:\\development\\Lodge-Management-System-Backoffice\\src\\views\\admin\\bookings"
     ]
   }
 }

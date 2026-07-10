@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"lodge-system/internal/models"
@@ -11,6 +12,7 @@ import (
 	"lodge-system/internal/utils/email"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 const defaultTaxRate = 16.0 // 16% VAT — adjust as needed
@@ -80,31 +82,52 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	taxAmount := math.Round((subtotal*defaultTaxRate/100)*100) / 100
 	total := math.Round((subtotal+taxAmount)*100) / 100
 
-	invoiceNumber, err := s.repo.GenerateInvoiceNumber()
-	if err != nil {
-		return err
-	}
-
 	now := time.Now()
 	inv := &models.Invoice{
-		InvoiceNumber: invoiceNumber,
-		BookingID:     &bookingID,
-		ClientType:    b.BookerType,
-		ClientName:    b.BookerName,
-		ClientEmail:   b.BookerEmail,
-		BranchID:      b.BranchID,
-		LineItems:     lineItems,
-		Subtotal:      subtotal,
-		TaxRate:       defaultTaxRate,
-		TaxAmount:     taxAmount,
-		Total:         total,
-		Status:        models.InvoiceStatusDraft,
-		IssuedDate:    &now,
-		DueDate:       &latestCheckOut,
-		Metadata:      b.Metadata,
+		BookingID:   &bookingID,
+		ClientType:  b.BookerType,
+		ClientName:  b.BookerName,
+		ClientEmail: b.BookerEmail,
+		BranchID:    b.BranchID,
+		LineItems:   lineItems,
+		Subtotal:    subtotal,
+		TaxRate:     defaultTaxRate,
+		TaxAmount:   taxAmount,
+		Total:       total,
+		Status:      models.InvoiceStatusDraft,
+		IssuedDate:  &now,
+		DueDate:     &latestCheckOut,
+		Metadata:    b.Metadata,
 	}
 
-	return s.repo.Create(inv, orgID)
+	// Retry on invoice-number collision: two bookings confirmed near-simultaneously
+	// can read the same MAX suffix and generate the same number; the loser retries.
+	var lastErr error
+	for attempt := 0; attempt < 5; attempt++ {
+		invoiceNumber, genErr := s.repo.GenerateInvoiceNumber()
+		if genErr != nil {
+			return genErr
+		}
+		inv.InvoiceNumber = invoiceNumber
+		if err := s.repo.Create(inv, orgID); err != nil {
+			if isDuplicateInvoiceNumber(err) {
+				lastErr = err
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return lastErr
+}
+
+// isDuplicateInvoiceNumber reports whether err is a unique-violation on the
+// invoice_number column (Postgres 23505 on invoices_invoice_number_key).
+func isDuplicateInvoiceNumber(err error) bool {
+	if pqErr, ok := err.(*pq.Error); ok {
+		return pqErr.Code == "23505" && strings.Contains(pqErr.Constraint, "invoice_number")
+	}
+	return false
 }
 
 // RegenerateRoomInvoice rebuilds a room booking's invoice from its assignments,
