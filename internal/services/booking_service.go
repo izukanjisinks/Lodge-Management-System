@@ -1128,6 +1128,11 @@ func (s *BookingService) CreateCorporateEvent(orgID uuid.UUID, corProfileID, com
 		}
 	}()
 
+	// Store the full submitted envelope (not the stripped summary) so the web user's
+	// reservation history survives confirmation; the invoice hydrator still finds
+	// company/approver at the same top-level keys.
+	eventMeta, _ := json.Marshal(envelope)
+
 	b := &models.Booking{
 		OrgID:        orgID,
 		BranchID:     branchID,
@@ -1140,7 +1145,7 @@ func (s *BookingService) CreateCorporateEvent(orgID uuid.UUID, corProfileID, com
 		CompanyID:    companyID,
 		WebUserID:    webUserID,
 		Status:       models.BookingStatusConfirmed,
-		Metadata:     buildEventMetadata(envelope),
+		Metadata:     json.RawMessage(eventMeta),
 	}
 	if promoteID != nil {
 		b.ID = *promoteID
@@ -1174,6 +1179,13 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 		}
 	}()
 
+	// Store the full submitted envelope as metadata so the web user's reservation
+	// history stays intact after confirmation. The invoice hydrator reads company/
+	// approver from the same top-level keys, so it keeps working. (Previously this
+	// stored only buildMealMetadata's stripped summary, which dropped the meal
+	// sessions / attendants and broke the reservation view.)
+	mealMeta, _ := json.Marshal(envelope)
+
 	b := &models.Booking{
 		OrgID:        orgID,
 		BookingType:  models.BookingTypeMeals,
@@ -1185,7 +1197,7 @@ func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, comp
 		CompanyID:    companyID,
 		WebUserID:    webUserID,
 		Status:       models.BookingStatusConfirmed,
-		Metadata:     buildMealMetadata(envelope),
+		Metadata:     json.RawMessage(mealMeta),
 	}
 	if envelope.BranchID != nil {
 		b.BranchID = envelope.BranchID
