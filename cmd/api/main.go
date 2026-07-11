@@ -133,6 +133,13 @@ func main() {
 	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
 	orderHandler := handlers.NewOrderHandler(orderSvc)
 
+	// Resident meal collection (sessions, cards, collect)
+	mealSessionRepo := repository.NewMealSessionRepository()
+	mealCardRepo := repository.NewMealCardRepository()
+	mealCollectionRepo := repository.NewMealCollectionRepository()
+	mealCollectionSvc := services.NewMealCollectionService(mealSessionRepo, mealCardRepo, mealCollectionRepo, invoiceRepo, menuRepo, attendeeRepo)
+	mealCollectionHandler := handlers.NewMealCollectionHandler(mealCollectionSvc)
+
 	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo))
 	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
 
@@ -209,6 +216,7 @@ func main() {
 		venueHandler)
 	routes.RegisterPasswordPolicyRoutes(passwordPolicyHandler)
 	routes.RegisterWalkInBookingRoutes(walkInBookingHandler)
+	routes.RegisterMealCollectionRoutes(mealCollectionHandler)
 
 	// Apply CORS middleware globally
 	handler := middleware.Logger(middleware.CORS(http.DefaultServeMux))

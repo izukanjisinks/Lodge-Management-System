@@ -279,6 +279,42 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*
 	return inv, nil
 }
 
+// PostBookingCharge appends a general line item to a booking's invoice and returns
+// the updated invoice. The generic primitive behind /bookings/{id}/charges — used
+// by resident meal collection and any future manual-charge flow.
+func (s *InvoiceService) PostBookingCharge(bookingID, orgID uuid.UUID, req *models.PostBookingChargeRequest) (*models.Invoice, error) {
+	if req.Amount < 0 {
+		return nil, errors.New("amount must be >= 0")
+	}
+	if req.Description == "" {
+		return nil, errors.New("description is required")
+	}
+	inv, err := s.repo.GetByBookingID(bookingID, orgID)
+	if err != nil {
+		return nil, errors.New("invoice not found for this booking")
+	}
+	qty := req.Quantity
+	if qty <= 0 {
+		qty = 1
+	}
+	lineType := req.LineType
+	if lineType == "" {
+		lineType = models.LineTypeMeal
+	}
+	line := &models.InvoiceLineItem{
+		BookingID:   &bookingID,
+		LineType:    lineType,
+		Description: req.Description,
+		Quantity:    qty,
+		UnitPrice:   req.Amount,
+		Total:       req.Amount * float64(qty),
+	}
+	if err := s.repo.AppendOrderLineItem(inv.ID, orgID, line); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(inv.ID, orgID)
+}
+
 func (s *InvoiceService) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, page, pageSize int) ([]models.Invoice, int, error) {
 	return s.repo.List(orgID, branchID, status, clientType, page, pageSize)
 }

@@ -69,6 +69,18 @@ func (r *BookingAttendeeRepository) GetByID(id, bookingID uuid.UUID) (*models.Bo
 	return scanAttendee(row)
 }
 
+// GetByIDUnscoped looks up an attendee by ID alone (attendee IDs are globally
+// unique). Used where the caller has an attendee_id but not its booking_id.
+func (r *BookingAttendeeRepository) GetByIDUnscoped(id uuid.UUID) (*models.BookingAttendee, error) {
+	row := r.db.QueryRow(`
+		SELECT a.id, a.booking_id, a.corporate_guest_id,
+		       a.full_name, a.email, a.phone, a.identification_card,
+		       a.dietary_notes, a.special_needs, a.is_lead_contact, a.created_at
+		FROM booking_attendees a
+		WHERE a.id = $1`, id)
+	return scanAttendee(row)
+}
+
 func (r *BookingAttendeeRepository) Update(id, bookingID uuid.UUID, req *models.UpdateAttendeeRequest) (*models.BookingAttendee, error) {
 	_, err := r.db.Exec(`
 		UPDATE booking_attendees SET

@@ -23,6 +23,11 @@ func RegisterInvoiceRoutes(h *handlers.InvoiceHandler) {
 	http.HandleFunc("PATCH /api/v1/invoices/{id}/status",
 		withAuthAndRole(h.UpdateStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
+	// Post a general charge line to a booking's invoice (resident meal collection,
+	// manual charges) — staff.
+	http.HandleFunc("POST /api/v1/bookings/{id}/charges",
+		withAuthAndRole(h.PostBookingCharge, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
 	// Email the invoice PDF to the client's billing address
 	http.HandleFunc("POST /api/v1/invoices/{id}/send",
 		withAuthAndRole(h.SendEmail, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))

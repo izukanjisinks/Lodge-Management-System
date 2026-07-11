@@ -175,3 +175,26 @@ func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	utils.RespondJSON(w, http.StatusOK, inv)
 }
+
+// PostBookingCharge handles POST /api/v1/bookings/{id}/charges — appends a general
+// line item to the booking's invoice. Generic primitive used by resident meal
+// collection and any future manual-charge UI.
+func (h *InvoiceHandler) PostBookingCharge(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	bookingID, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid booking id")
+		return
+	}
+	var req models.PostBookingChargeRequest
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	inv, err := h.service.PostBookingCharge(bookingID, orgID, &req)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, inv)
+}

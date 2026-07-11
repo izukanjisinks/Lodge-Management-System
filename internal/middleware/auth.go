@@ -224,6 +224,11 @@ func GetRoleFromContext(ctx context.Context) (string, bool) {
 	return role, ok
 }
 
+func GetEmailFromContext(ctx context.Context) (string, bool) {
+	email, ok := ctx.Value(UserEmail).(string)
+	return email, ok
+}
+
 func GetBackofficeUserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(BackofficeUserIDKey).(uuid.UUID)
 	return id, ok
