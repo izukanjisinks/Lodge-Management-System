@@ -28,7 +28,7 @@ func ParsePagination(r *http.Request) Pagination {
 		}
 	}
 	if ps := r.URL.Query().Get("page_size"); ps != "" {
-		if v, err := strconv.Atoi(ps); err == nil && v > 0 && v <= 100 {
+		if v, err := strconv.Atoi(ps); err == nil && v > 0 && v <= 1000 {
 			pageSize = v
 		}
 	}

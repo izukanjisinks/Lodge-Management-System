@@ -197,6 +197,30 @@ func (h *OrderHandler) UpdateKitchenStatus(w http.ResponseWriter, r *http.Reques
 	utils.RespondJSON(w, http.StatusOK, order)
 }
 
+func (h *OrderHandler) UpdateBarStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(r.PathValue("id"))
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid order ID")
+		return
+	}
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	var req struct {
+		BarStatus string `json:"bar_status"`
+	}
+	if err := utils.DecodeJson(r, &req); err != nil {
+		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	order, err := h.service.UpdateBarStatus(id, orgID, req.BarStatus)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	utils.RespondJSON(w, http.StatusOK, order)
+}
+
 func (h *OrderHandler) AddItems(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(r.PathValue("id"))
 	if err != nil {

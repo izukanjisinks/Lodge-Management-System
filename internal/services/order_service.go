@@ -123,6 +123,17 @@ func (s *OrderService) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, status
 	return s.repo.UpdateKitchenStatus(id, orgID, status)
 }
 
+// UpdateBarStatus advances the bar status of an open order. Independent of
+// kitchen_status — an order can carry both statuses at once.
+func (s *OrderService) UpdateBarStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+	switch status {
+	case models.BarStatusNew, models.BarStatusPreparing, models.BarStatusReady:
+	default:
+		return nil, fmt.Errorf("invalid bar_status %q: must be new, preparing, or ready", status)
+	}
+	return s.repo.UpdateBarStatus(id, orgID, status)
+}
+
 // CloseAllOrders closes every open order for the org. Returns the count closed.
 func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
 	count, err := s.repo.CloseOrdersForDay(orgID)

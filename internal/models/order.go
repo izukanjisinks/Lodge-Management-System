@@ -14,36 +14,51 @@ const (
 	OrderStatusOpen   = "open"
 	OrderStatusClosed = "closed"
 
-	KitchenStatusNew      = "new"
+	KitchenStatusNew       = "new"
 	KitchenStatusPreparing = "preparing"
-	KitchenStatusReady    = "ready"
+	KitchenStatusReady     = "ready"
+
+	BarStatusNew       = "new"
+	BarStatusPreparing = "preparing"
+	BarStatusReady     = "ready"
+
+	// MenuCategoryDrinks is the single canonical bar-relevant category. An order
+	// item is bar-relevant if its menu item's category equals this value;
+	// everything else is kitchen-relevant.
+	MenuCategoryDrinks = "drinks"
 )
 
 type Order struct {
-	ID            uuid.UUID    `json:"id"`
-	OrgID         uuid.UUID    `json:"org_id"`
-	BranchID      *uuid.UUID   `json:"branch_id,omitempty"`
-	BookingID     *uuid.UUID   `json:"booking_id,omitempty"`
-	AttendeeID    *uuid.UUID   `json:"attendee_id,omitempty"`
-	BookingNumber string       `json:"booking_number,omitempty"`
-	RoomName      string       `json:"room_name,omitempty"`
-	ClientName    string       `json:"client_name,omitempty"`
-	CompanyName   string       `json:"company_name,omitempty"`
-	AttendeeName  string       `json:"attendee_name,omitempty"`
-	OrderNumber   string       `json:"order_number"`
-	Type          string       `json:"type"`
-	Status        string       `json:"status"`
-	KitchenStatus string       `json:"kitchen_status"`
-	Notes         string       `json:"notes,omitempty"`
-	ScheduledFor  *time.Time   `json:"scheduled_for,omitempty"` // meal session date
-	MealPeriod    string       `json:"meal_period,omitempty"`   // breakfast|lunch|dinner
-	ServingTime   string       `json:"serving_time,omitempty"`  // HH:MM — scheduled serving time
-	PaxCount      *int         `json:"pax_count,omitempty"`     // cover count for the session (display context, not a price multiplier)
-	ServiceType   string       `json:"service_type,omitempty"`  // buffet|individual_order|set_menu|a_la_carte|mixed
-	Total         float64      `json:"total"`
-	Items         []OrderItem  `json:"items,omitempty"`
-	CreatedAt     time.Time    `json:"created_at"`
-	UpdatedAt     time.Time    `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	OrgID         uuid.UUID  `json:"org_id"`
+	BranchID      *uuid.UUID `json:"branch_id,omitempty"`
+	BookingID     *uuid.UUID `json:"booking_id,omitempty"`
+	AttendeeID    *uuid.UUID `json:"attendee_id,omitempty"`
+	BookingNumber string     `json:"booking_number,omitempty"`
+	RoomName      string     `json:"room_name,omitempty"`
+	ClientName    string     `json:"client_name,omitempty"`
+	CompanyName   string     `json:"company_name,omitempty"`
+	AttendeeName  string     `json:"attendee_name,omitempty"`
+	OrderNumber   string     `json:"order_number"`
+	Type          string     `json:"type"`
+	Status        string     `json:"status"`
+	KitchenStatus string     `json:"kitchen_status"`
+	BarStatus     string     `json:"bar_status"`
+	// HasKitchenItems / HasBarItems: whether the order contains at least one item
+	// relevant to that station. Drives whether Kitchen/Bar boards and OrdersView's
+	// per-station status badge show for this order at all.
+	HasKitchenItems bool        `json:"has_kitchen_items"`
+	HasBarItems     bool        `json:"has_bar_items"`
+	Notes           string      `json:"notes,omitempty"`
+	ScheduledFor    *time.Time  `json:"scheduled_for,omitempty"` // meal session date
+	MealPeriod      string      `json:"meal_period,omitempty"`   // breakfast|lunch|dinner
+	ServingTime     string      `json:"serving_time,omitempty"`  // HH:MM — scheduled serving time
+	PaxCount        *int        `json:"pax_count,omitempty"`     // cover count for the session (display context, not a price multiplier)
+	ServiceType     string      `json:"service_type,omitempty"`  // buffet|individual_order|set_menu|a_la_carte|mixed
+	Total           float64     `json:"total"`
+	Items           []OrderItem `json:"items,omitempty"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 // NullDate wraps sql.NullTime for scanning a nullable DATE column.
@@ -56,6 +71,7 @@ type OrderItem struct {
 	AttendeeID   *uuid.UUID `json:"attendee_id,omitempty"`
 	AttendeeName string     `json:"attendee_name,omitempty"`
 	ItemName     string     `json:"item_name,omitempty"`
+	Category     string     `json:"category,omitempty"` // the linked menu item's category, e.g. "drinks"
 	Quantity     int        `json:"quantity"`
 	UnitPrice    float64    `json:"unit_price"`
 	Subtotal     float64    `json:"subtotal"`
@@ -65,15 +81,15 @@ type OrderItem struct {
 
 // PlaceOrderRequest creates a new in-house order tied to a booking.
 type PlaceOrderRequest struct {
-	BookingID  uuid.UUID  `json:"booking_id"`
-	AttendeeID *uuid.UUID `json:"attendee_id,omitempty"`
-	Notes      string     `json:"notes,omitempty"`
+	BookingID  uuid.UUID               `json:"booking_id"`
+	AttendeeID *uuid.UUID              `json:"attendee_id,omitempty"`
+	Notes      string                  `json:"notes,omitempty"`
 	Items      []PlaceOrderItemRequest `json:"items"`
 }
 
 // PlaceWalkInOrderRequest creates a new walk-in order with no booking.
 type PlaceWalkInOrderRequest struct {
-	Notes string                 `json:"notes,omitempty"`
+	Notes string                  `json:"notes,omitempty"`
 	Items []PlaceOrderItemRequest `json:"items"`
 }
 

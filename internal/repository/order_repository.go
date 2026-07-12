@@ -95,7 +95,7 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 	var mealPeriod, servingTime, serviceType sql.NullString
 	var paxCount sql.NullInt64
 	err := r.db.QueryRow(`
-		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.bar_status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -103,6 +103,14 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		       cd.company_name,
 		       COALESCE(att.full_name, lead.full_name) AS attendee_name,
 		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
+		       EXISTS (
+		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
+		           WHERE oi.order_id = o.id AND COALESCE(mi.category, '') != 'drinks'
+		       ) AS has_kitchen_items,
+		       EXISTS (
+		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
+		           WHERE oi.order_id = o.id AND mi.category = 'drinks'
+		       ) AS has_bar_items,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b    ON b.id = o.booking_id
@@ -121,9 +129,10 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		    ORDER BY bra.check_in ASC LIMIT 1
 		) asg ON TRUE
 		WHERE o.id=$1 AND o.org_id=$2`, id, orgID).
-		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
+		Scan(&o.ID, &o.OrgID, &branchID, &bookingID, &attendeeID, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &o.BarStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod, &servingTime, &paxCount, &serviceType,
+			&o.HasKitchenItems, &o.HasBarItems,
 			&o.CreatedAt, &o.UpdatedAt)
 	if scheduledFor.Valid {
 		o.ScheduledFor = &scheduledFor.Time
@@ -226,7 +235,7 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 	}
 
 	rows, err := r.db.Query(fmt.Sprintf(`
-		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.notes,
+		SELECT o.id, o.org_id, o.branch_id, o.booking_id, o.attendee_id, o.order_number, o.type, o.status, o.kitchen_status, o.bar_status, o.notes,
 		       COALESCE((SELECT SUM(subtotal) FROM order_items WHERE order_id = o.id), 0) AS total,
 		       b.booking_number,
 		       asg.room_name,
@@ -234,6 +243,14 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		       cd.company_name,
 		       COALESCE(att.full_name, lead.full_name) AS attendee_name,
 		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
+		       EXISTS (
+		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
+		           WHERE oi.order_id = o.id AND COALESCE(mi.category, '') != 'drinks'
+		       ) AS has_kitchen_items,
+		       EXISTS (
+		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
+		           WHERE oi.order_id = o.id AND mi.category = 'drinks'
+		       ) AS has_bar_items,
 		       o.created_at, o.updated_at
 		FROM orders o
 		LEFT JOIN bookings            b    ON b.id = o.booking_id
@@ -267,9 +284,10 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		var notes, bookingNumber, roomName, clientName, companyName, attendeeName, mealPeriod, servingTime, serviceType sql.NullString
 		var scheduledFor models.NullDate
 		var paxCount sql.NullInt64
-		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &notes, &o.Total,
+		if err := rows.Scan(&o.ID, &o.OrgID, &brid, &bid, &aid, &o.OrderNumber, &o.Type, &o.Status, &o.KitchenStatus, &o.BarStatus, &notes, &o.Total,
 			&bookingNumber, &roomName, &clientName, &companyName, &attendeeName,
 			&scheduledFor, &mealPeriod, &servingTime, &paxCount, &serviceType,
+			&o.HasKitchenItems, &o.HasBarItems,
 			&o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, err
 		}
@@ -451,6 +469,17 @@ func (r *OrderRepository) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, sta
 	return r.GetByID(id, orgID)
 }
 
+func (r *OrderRepository) UpdateBarStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+	_, err := r.db.Exec(
+		`UPDATE orders SET bar_status=$1, updated_at=$2 WHERE id=$3 AND org_id=$4 AND status='open'`,
+		status, time.Now(), id, orgID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetByID(id, orgID)
+}
+
 func (r *OrderRepository) CloseOrdersForDay(orgID uuid.UUID) (int64, error) {
 	res, err := r.db.Exec(`
 		UPDATE orders
@@ -611,7 +640,7 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 	rows, err := r.db.Query(`
 		SELECT oi.id, oi.order_id, oi.menu_item_id, oi.attendee_id,
 		       COALESCE(att.full_name, '') AS attendee_name,
-		       mi.name, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at
+		       mi.name, COALESCE(mi.category, ''), oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at
 		FROM order_items oi
 		JOIN menu_items mi ON mi.id = oi.menu_item_id
 		LEFT JOIN booking_attendees att ON att.id = oi.attendee_id
@@ -628,7 +657,7 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 		var attendeeID uuid.NullUUID
 		var attendeeName, notes sql.NullString
 		if err := rows.Scan(&item.ID, &item.OrderID, &item.MenuItemID, &attendeeID, &attendeeName,
-			&item.ItemName, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt); err != nil {
+			&item.ItemName, &item.Category, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if attendeeID.Valid {
