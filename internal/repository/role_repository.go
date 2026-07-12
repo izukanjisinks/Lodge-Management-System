@@ -5,6 +5,8 @@ import (
 
 	"lodge-system/internal/database"
 	"lodge-system/internal/models"
+
+	"github.com/google/uuid"
 )
 
 type RoleRepository struct {
@@ -26,10 +28,15 @@ func (r *RoleRepository) GetRoleByName(name string) (*models.Role, error) {
 	return &role, nil
 }
 
-func (r *RoleRepository) GetAllRoles() ([]models.Role, error) {
-	rows, err := r.db.Query(
-		`SELECT role_id, name, description, created_at, updated_at FROM roles ORDER BY name`,
-	)
+// GetAllRoles returns one row per role name for the given org. Roles exist in two
+// scopes — the org's own rows and a shared NULL-org set — so we deduplicate by name,
+// preferring the org-scoped row (org_id = $1) over the shared one (org_id IS NULL).
+func (r *RoleRepository) GetAllRoles(orgID uuid.UUID) ([]models.Role, error) {
+	rows, err := r.db.Query(`
+		SELECT DISTINCT ON (name) role_id, name, description, created_at, updated_at
+		FROM roles
+		WHERE org_id = $1 OR org_id IS NULL
+		ORDER BY name, (org_id IS NULL)`, orgID)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,8 @@ package services
 import (
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 type RoleService struct {
@@ -26,6 +28,6 @@ func (s *RoleService) InitializePredefinedRoles() error {
 	return nil
 }
 
-func (s *RoleService) GetAllRoles() ([]models.Role, error) {
-	return s.roleRepo.GetAllRoles()
+func (s *RoleService) GetAllRoles(orgID uuid.UUID) ([]models.Role, error) {
+	return s.roleRepo.GetAllRoles(orgID)
 }

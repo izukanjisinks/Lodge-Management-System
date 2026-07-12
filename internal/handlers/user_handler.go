@@ -233,7 +233,8 @@ func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *UserHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
-	roles, err := h.roleService.GetAllRoles()
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+	roles, err := h.roleService.GetAllRoles(orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve roles")
 		return
