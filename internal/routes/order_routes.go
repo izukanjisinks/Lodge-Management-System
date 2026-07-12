@@ -16,25 +16,25 @@ func RegisterOrderRoutes(h *handlers.OrderHandler) {
 	http.HandleFunc("GET /api/v1/orders/{id}",
 		withAuth(h.GetByID))
 
-	// Place orders — branch admin, manager, receptionist
+	// Place orders — branch admin, manager, receptionist, waiter
 	http.HandleFunc("POST /api/v1/orders",
-		withAuthAndRole(h.PlaceOrder, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.PlaceOrder, models.RoleBranchAdmin, models.RoleManager, models.RoleWaiter))
 	http.HandleFunc("POST /api/v1/orders/walk-in",
-		withAuthAndRole(h.PlaceWalkInOrder, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.PlaceWalkInOrder, models.RoleBranchAdmin, models.RoleManager, models.RoleWaiter))
 
-	// Kitchen status
+	// Kitchen status — kitchen staff own this
 	http.HandleFunc("PATCH /api/v1/orders/{id}/kitchen-status",
-		withAuthAndRole(h.UpdateKitchenStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.UpdateKitchenStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleKitchenStaff))
 
-	// Bar status
+	// Bar status — bar staff own this
 	http.HandleFunc("PATCH /api/v1/orders/{id}/bar-status",
-		withAuthAndRole(h.UpdateBarStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.UpdateBarStatus, models.RoleBranchAdmin, models.RoleManager, models.RoleBarStaff))
 
-	// Add / remove items on an existing order
+	// Add / remove items on an existing order — branch admin, manager, receptionist, waiter
 	http.HandleFunc("POST /api/v1/orders/{id}/items",
-		withAuthAndRole(h.AddItems, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.AddItems, models.RoleBranchAdmin, models.RoleManager, models.RoleWaiter))
 	http.HandleFunc("DELETE /api/v1/orders/{id}/items/{item_id}",
-		withAuthAndRole(h.RemoveItem, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+		withAuthAndRole(h.RemoveItem, models.RoleBranchAdmin, models.RoleManager, models.RoleWaiter))
 
 	// Manually close all open orders for the org — branch admin, manager
 	http.HandleFunc("PATCH /api/v1/orders/close-all",

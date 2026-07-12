@@ -68,10 +68,25 @@ func (u *User) HasPermission(permission string) bool {
 			"clients:write":  true,
 		}
 		return allowed[permission]
-	case RoleCleaner:
+	case RoleKitchenStaff:
 		allowed := map[string]bool{
-			"rooms:read":    true,
-			"cleaning:read": true,
+			"orders:read":  true,
+			"orders:write": true,
+			"menu:read":    true,
+		}
+		return allowed[permission]
+	case RoleWaiter:
+		allowed := map[string]bool{
+			"orders:read":  true,
+			"orders:write": true,
+			"menu:read":    true,
+		}
+		return allowed[permission]
+	case RoleBarStaff:
+		allowed := map[string]bool{
+			"orders:read":  true,
+			"orders:write": true,
+			"menu:read":    true,
 		}
 		return allowed[permission]
 	}

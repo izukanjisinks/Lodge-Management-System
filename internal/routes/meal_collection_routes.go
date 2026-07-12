@@ -30,8 +30,9 @@ func RegisterMealCollectionRoutes(h *handlers.MealCollectionHandler) {
 		withAuth(h.ListCollections))
 
 	// ── Collect ───────────────────────────────────────────────────────────────
+	// Serving a meal is front-line work — waiters do this in addition to desk staff.
 	http.HandleFunc("POST /api/v1/meal-sessions/{id}/collect",
-		withAuthAndRole(h.Collect, staff...))
+		withAuthAndRole(h.Collect, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist, models.RoleWaiter))
 
 	// ── Cards ─────────────────────────────────────────────────────────────────
 	http.HandleFunc("GET /api/v1/meal-cards",
