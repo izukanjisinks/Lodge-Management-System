@@ -25,6 +25,18 @@ func (s *MenuService) GetMenu(orgID uuid.UUID, branchID *uuid.UUID, category str
 	if err != nil {
 		return nil, errors.New("menu not found")
 	}
+	// No menu configured anywhere — return an empty menu rather than failing so the
+	// UI can render a "no menu yet" state instead of an error.
+	if menu == nil {
+		return &models.MenuResponse{
+			Items: models.MenuItemsPage{
+				Data:     []models.MenuItem{},
+				Page:     page,
+				PageSize: pageSize,
+				Total:    0,
+			},
+		}, nil
+	}
 	return s.buildResponse(menu, orgID, category, page, pageSize)
 }
 

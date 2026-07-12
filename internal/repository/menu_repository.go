@@ -22,47 +22,73 @@ func NewMenuRepository() *MenuRepository {
 
 // ── Menus ─────────────────────────────────────────────────────────────────────
 
-// GetMenu returns the branch-scoped menu if branchID is set, otherwise the
-// org-scoped menu, falling back to the system default (org_id IS NULL).
+// GetMenu resolves the menu to show for the given scope, in priority order:
+//   1. If branchID is set → that branch's own menu.
+//   2. If branchID is nil (e.g. an org-level admin) → the org's main branch menu.
+//   3. The org-level menu (branch_id IS NULL) or the system default (org_id IS NULL).
+//
+// Returns (nil, nil) when no menu exists anywhere, so callers can present an
+// empty menu instead of failing.
 func (r *MenuRepository) GetMenu(orgID uuid.UUID, branchID *uuid.UUID) (*models.Menu, error) {
-	var m models.Menu
-	var oid uuid.NullUUID
-	var bid uuid.NullUUID
-	var description sql.NullString
-
+	// 1. Explicit branch filter — that specific branch's menu.
 	if branchID != nil {
-		err := r.db.QueryRow(`
-			SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
-			FROM menus
-			WHERE org_id = $1 AND branch_id = $2
-			LIMIT 1`, orgID, branchID).
-			Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
+		if m, err := r.menuForBranch(orgID, *branchID); err != nil {
+			return nil, err
+		} else if m != nil {
+			return m, nil
+		}
+		// Fall through to org/default menu if the branch has no menu of its own.
+	} else {
+		// 2. No branch context — fall back to the org's main branch menu.
+		var mainBranchID uuid.UUID
+		err := r.db.QueryRow(
+			`SELECT id FROM branches WHERE org_id = $1 AND is_main = TRUE LIMIT 1`, orgID,
+		).Scan(&mainBranchID)
 		if err != nil && err != sql.ErrNoRows {
 			return nil, err
 		}
 		if err == nil {
-			if oid.Valid {
-				m.OrgID = oid.UUID
+			if m, err := r.menuForBranch(orgID, mainBranchID); err != nil {
+				return nil, err
+			} else if m != nil {
+				return m, nil
 			}
-			if bid.Valid {
-				m.BranchID = &bid.UUID
-			}
-			if description.Valid {
-				m.Description = description.String
-			}
-			return &m, nil
 		}
-		// Fall through to org-level menu if no branch menu exists
+		// Fall through to org/default menu if there's no main branch or it has no menu.
 	}
 
-	err := r.db.QueryRow(`
+	// 3. Org-level menu, then system default.
+	m, err := r.scanMenu(r.db.QueryRow(`
 		SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
 		FROM menus
 		WHERE (org_id = $1 AND branch_id IS NULL) OR org_id IS NULL
 		ORDER BY org_id NULLS LAST
-		LIMIT 1`, orgID).
-		Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt)
-	if err != nil {
+		LIMIT 1`, orgID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return m, err
+}
+
+// menuForBranch returns the menu owned by a specific branch, or (nil, nil) if none.
+func (r *MenuRepository) menuForBranch(orgID, branchID uuid.UUID) (*models.Menu, error) {
+	m, err := r.scanMenu(r.db.QueryRow(`
+		SELECT id, org_id, branch_id, name, description, is_active, created_at, updated_at
+		FROM menus
+		WHERE org_id = $1 AND branch_id = $2
+		LIMIT 1`, orgID, branchID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return m, err
+}
+
+// scanMenu scans a single menu row, handling the nullable org/branch/description columns.
+func (r *MenuRepository) scanMenu(row *sql.Row) (*models.Menu, error) {
+	var m models.Menu
+	var oid, bid uuid.NullUUID
+	var description sql.NullString
+	if err := row.Scan(&m.ID, &oid, &bid, &m.Name, &description, &m.IsActive, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, err
 	}
 	if oid.Valid {
