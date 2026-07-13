@@ -23,9 +23,9 @@ func NewMenuRepository() *MenuRepository {
 // ── Menus ─────────────────────────────────────────────────────────────────────
 
 // GetMenu resolves the menu to show for the given scope, in priority order:
-//   1. If branchID is set → that branch's own menu.
-//   2. If branchID is nil (e.g. an org-level admin) → the org's main branch menu.
-//   3. The org-level menu (branch_id IS NULL) or the system default (org_id IS NULL).
+//  1. If branchID is set → that branch's own menu.
+//  2. If branchID is nil (e.g. an org-level admin) → the org's main branch menu.
+//  3. The org-level menu (branch_id IS NULL) or the system default (org_id IS NULL).
 //
 // Returns (nil, nil) when no menu exists anywhere, so callers can present an
 // empty menu instead of failing.
@@ -209,7 +209,7 @@ func (r *MenuRepository) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models
 // ListAvailableMenuItems returns only available items — used by the guest endpoint.
 func (r *MenuRepository) ListAvailableMenuItems(menuID uuid.UUID, category string, page, pageSize int) ([]models.MenuItem, int, error) {
 	args := []interface{}{menuID}
-	where := "menu_id=$1 AND is_available=TRUE"
+	where := "menu_id=$1"
 	if category != "" {
 		args = append(args, category)
 		where += fmt.Sprintf(" AND category=$%d", len(args))
