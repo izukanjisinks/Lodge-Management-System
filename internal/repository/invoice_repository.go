@@ -217,12 +217,19 @@ func (r *InvoiceRepository) UpdateRoomLineItem(bookingID uuid.UUID, orgID uuid.U
 
 func (r *InvoiceRepository) UpdateStatus(id uuid.UUID, orgID uuid.UUID, status string, paidDate *time.Time, notes *string, proofURL *string) error {
 	now := time.Now()
+	// Stamp issued_at the first time the invoice becomes 'issued'. The transition check
+	// is done in Go (rather than comparing $1 against another param in SQL) because
+	// status is a Postgres enum column and reusing $1 in a second comparison caused
+	// Postgres to fail inferring a consistent type for it (42P08).
+	becomingIssued := status == models.InvoiceStatusIssued
 	_, err := r.db.Exec(`
 		UPDATE invoices
-		SET status=$1, paid_date=$2, notes=COALESCE($3, notes),
-		    proof_of_payment_url=COALESCE($4, proof_of_payment_url), updated_at=$5
-		WHERE id=$6 AND org_id=$7`,
-		status, paidDate, notes, proofURL, now, id, orgID,
+		SET status=$1::invoice_status, paid_date=$2, notes=COALESCE($3, notes),
+		    proof_of_payment_url=COALESCE($4, proof_of_payment_url),
+		    issued_at=CASE WHEN $6 THEN COALESCE(issued_at, $5) ELSE issued_at END,
+		    updated_at=$5
+		WHERE id=$7 AND org_id=$8`,
+		status, paidDate, notes, proofURL, now, becomingIssued, id, orgID,
 	)
 	return err
 }

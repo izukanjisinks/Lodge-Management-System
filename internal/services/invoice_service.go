@@ -82,7 +82,6 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 	taxAmount := math.Round((subtotal*defaultTaxRate/100)*100) / 100
 	total := math.Round((subtotal+taxAmount)*100) / 100
 
-	now := time.Now()
 	inv := &models.Invoice{
 		BookingID:   &bookingID,
 		ClientType:  b.BookerType,
@@ -95,7 +94,8 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		TaxAmount:   taxAmount,
 		Total:       total,
 		Status:      models.InvoiceStatusDraft,
-		IssuedDate:  &now,
+		// IssuedDate stays nil for drafts — it is stamped when the invoice is issued
+		// (see InvoiceRepository.UpdateStatus). Keeps "Created" and "Issued" distinct.
 		DueDate:     &latestCheckOut,
 		Metadata:    b.Metadata,
 	}
