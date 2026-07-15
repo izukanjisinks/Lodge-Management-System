@@ -1506,6 +1506,23 @@ func (s *BookingService) UpdateStatus(id, orgID uuid.UUID, newStatus string) err
 
 // ─── Room assignments ─────────────────────────────────────────────────────────
 
+// checkRoomAssignable enforces the sharing rule at assignment time: a room may
+// only be shared by guests under the SAME booking, and only up to its capacity.
+// An overlapping assignment from a different booking blocks it outright.
+func (s *BookingService) checkRoomAssignable(roomID, bookingID uuid.UUID, checkIn, checkOut time.Time, excludeID *uuid.UUID) error {
+	res, err := s.assignmentRepo.CanAssignRoom(roomID, bookingID, checkIn, checkOut, excludeID)
+	if err != nil {
+		return err
+	}
+	if res.OtherBooking {
+		return errors.New("room is already assigned to a different booking for the selected dates")
+	}
+	if res.CapacityFull {
+		return fmt.Errorf("room capacity (%d) reached for this booking on the selected dates", res.Capacity)
+	}
+	return nil
+}
+
 func (s *BookingService) AssignRoom(id, orgID uuid.UUID, req *models.CreateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
@@ -1517,12 +1534,8 @@ func (s *BookingService) AssignRoom(id, orgID uuid.UUID, req *models.CreateRoomA
 		return nil, errors.New("check_out must be after check_in")
 	}
 
-	available, err := s.assignmentRepo.IsRoomAvailable(req.RoomID, req.CheckIn.Time, req.CheckOut.Time, nil)
-	if err != nil {
+	if err := s.checkRoomAssignable(req.RoomID, id, req.CheckIn.Time, req.CheckOut.Time, nil); err != nil {
 		return nil, err
-	}
-	if !available {
-		return nil, errors.New("room is not available for the selected dates")
 	}
 
 	tx, err := s.bookingRepo.Begin()
@@ -1587,12 +1600,8 @@ func (s *BookingService) UpdateAssignment(id, orgID, assignmentID uuid.UUID, req
 		checkOut = req.CheckOut.Time
 	}
 
-	available, err := s.assignmentRepo.IsRoomAvailable(roomID, checkIn, checkOut, &assignmentID)
-	if err != nil {
+	if err := s.checkRoomAssignable(roomID, id, checkIn, checkOut, &assignmentID); err != nil {
 		return nil, err
-	}
-	if !available {
-		return nil, errors.New("room is not available for the selected dates")
 	}
 
 	return s.assignmentRepo.Update(assignmentID, id, req)
@@ -1616,6 +1625,19 @@ func (s *BookingService) CheckInAssignment(id, orgID, assignmentID uuid.UUID) er
 		return err
 	}
 	defer tx.Rollback()
+
+	// A room may only be shared within the same booking. Block check-in if another
+	// booking's guest is currently physically in this room (checked in, not yet out).
+	occupied, otherBooking, err := s.assignmentRepo.RoomOccupiedByOtherBookingTx(tx, assignmentID, id)
+	if err != nil {
+		return err
+	}
+	if occupied {
+		if otherBooking != "" {
+			return fmt.Errorf("room is currently occupied by another booking (%s); guest cannot check in", otherBooking)
+		}
+		return errors.New("room is currently occupied by another booking; guest cannot check in")
+	}
 
 	if err := s.assignmentRepo.UpdateStatusTx(tx, assignmentID, id, models.AssignmentStatusCheckedIn); err != nil {
 		return err

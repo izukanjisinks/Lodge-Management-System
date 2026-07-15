@@ -120,6 +120,41 @@ const assignmentStatusUpdateSQL = `
 		updated_at = $2
 	WHERE id = $3 AND booking_id = $4`
 
+// RoomOccupiedByOtherBookingTx reports whether, within the transaction, the room
+// of the given assignment is currently physically occupied (status = checked_in
+// and not yet checked out) by a guest belonging to a DIFFERENT booking. Used to
+// prevent checking a guest into a room another booking's guest is still in.
+// Returns the occupying booking's number for a clear error message.
+func (r *BookingRoomAssignmentRepository) RoomOccupiedByOtherBookingTx(tx *sql.Tx, assignmentID, bookingID uuid.UUID) (bool, string, error) {
+	var occupied bool
+	var otherBookingNumber sql.NullString
+	err := tx.QueryRow(`
+		SELECT EXISTS (
+		         SELECT 1 FROM booking_room_assignments other
+		         WHERE other.room_id = self.room_id
+		           AND other.booking_id != self.booking_id
+		           AND other.status = 'checked_in'
+		           AND other.checked_out_at IS NULL
+		       ),
+		       (
+		         SELECT bk.booking_number
+		         FROM booking_room_assignments other
+		         JOIN bookings bk ON bk.id = other.booking_id
+		         WHERE other.room_id = self.room_id
+		           AND other.booking_id != self.booking_id
+		           AND other.status = 'checked_in'
+		           AND other.checked_out_at IS NULL
+		         LIMIT 1
+		       )
+		FROM booking_room_assignments self
+		WHERE self.id = $1 AND self.booking_id = $2`, assignmentID, bookingID).
+		Scan(&occupied, &otherBookingNumber)
+	if err != nil {
+		return false, "", err
+	}
+	return occupied, otherBookingNumber.String, nil
+}
+
 // StatusCountsTx returns, within a transaction, the number of non-cancelled
 // assignments for a booking and how many of those are checked out. Used to roll
 // the parent booking's status up from its room assignments.
@@ -183,6 +218,63 @@ func (r *BookingRoomAssignmentRepository) GetAssignmentsForInvoice(bookingID uui
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+// RoomAssignability is the outcome of checking whether a room can take another
+// assignment for a given booking over a date range.
+type RoomAssignability struct {
+	OK           bool
+	OtherBooking bool // an overlapping assignment belongs to a DIFFERENT booking
+	CapacityFull bool // the room is at capacity with same-booking guests
+	Occupied     int  // current overlapping same-booking assignments
+	Capacity     int  // the room's capacity
+}
+
+// CanAssignRoom enforces the sharing rule: a room may only be shared by guests
+// under the SAME booking, and only up to the room's capacity. Any overlapping
+// assignment from a different booking blocks it outright.
+func (r *BookingRoomAssignmentRepository) CanAssignRoom(roomID, bookingID uuid.UUID, checkIn, checkOut time.Time, excludeID *uuid.UUID) (RoomAssignability, error) {
+	var res RoomAssignability
+
+	// Room capacity.
+	if err := r.db.QueryRow(`SELECT capacity FROM rooms WHERE id = $1`, roomID).Scan(&res.Capacity); err != nil {
+		return res, err
+	}
+
+	args := []interface{}{roomID, checkOut, checkIn, bookingID}
+	excludeClause := ""
+	if excludeID != nil {
+		args = append(args, *excludeID)
+		excludeClause = fmt.Sprintf(" AND id != $%d", len(args))
+	}
+
+	// Count overlapping active assignments, split by whether they belong to a
+	// different booking vs the same booking.
+	var otherBooking, sameBooking int
+	err := r.db.QueryRow(fmt.Sprintf(`
+		SELECT
+			COUNT(*) FILTER (WHERE booking_id != $4) AS other_booking,
+			COUNT(*) FILTER (WHERE booking_id  = $4) AS same_booking
+		FROM booking_room_assignments
+		WHERE room_id = $1
+		  AND status IN ('pending','confirmed','checked_in')
+		  AND check_in  < $2
+		  AND check_out > $3%s`, excludeClause), args...).Scan(&otherBooking, &sameBooking)
+	if err != nil {
+		return res, err
+	}
+
+	res.Occupied = sameBooking
+	if otherBooking > 0 {
+		res.OtherBooking = true
+		return res, nil
+	}
+	if sameBooking >= res.Capacity {
+		res.CapacityFull = true
+		return res, nil
+	}
+	res.OK = true
+	return res, nil
 }
 
 // IsRoomAvailable checks no active assignment overlaps the requested dates for the given room.
