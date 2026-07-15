@@ -105,11 +105,18 @@ func (r *OrderRepository) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order,
 		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
 		       EXISTS (
 		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
-		           WHERE oi.order_id = o.id AND COALESCE(mi.category, '') != 'drinks'
+		           WHERE oi.order_id = o.id AND (
+		               mi.production_area IN ('kitchen', 'bakery', 'grill')
+		               -- Fallback for items without a production_area: anything non-drinks is kitchen.
+		               OR (mi.production_area IS NULL AND COALESCE(mi.category, '') != 'drinks')
+		           )
 		       ) AS has_kitchen_items,
 		       EXISTS (
 		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
-		           WHERE oi.order_id = o.id AND mi.category = 'drinks'
+		           WHERE oi.order_id = o.id AND (
+		               mi.production_area = 'bar'
+		               OR (mi.production_area IS NULL AND mi.category = 'drinks')
+		           )
 		       ) AS has_bar_items,
 		       o.created_at, o.updated_at
 		FROM orders o
@@ -245,11 +252,18 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		       o.scheduled_for, o.meal_period, o.serving_time, o.pax_count, o.service_type,
 		       EXISTS (
 		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
-		           WHERE oi.order_id = o.id AND COALESCE(mi.category, '') != 'drinks'
+		           WHERE oi.order_id = o.id AND (
+		               mi.production_area IN ('kitchen', 'bakery', 'grill')
+		               -- Fallback for items without a production_area: anything non-drinks is kitchen.
+		               OR (mi.production_area IS NULL AND COALESCE(mi.category, '') != 'drinks')
+		           )
 		       ) AS has_kitchen_items,
 		       EXISTS (
 		           SELECT 1 FROM order_items oi JOIN menu_items mi ON mi.id = oi.menu_item_id
-		           WHERE oi.order_id = o.id AND mi.category = 'drinks'
+		           WHERE oi.order_id = o.id AND (
+		               mi.production_area = 'bar'
+		               OR (mi.production_area IS NULL AND mi.category = 'drinks')
+		           )
 		       ) AS has_bar_items,
 		       o.created_at, o.updated_at
 		FROM orders o

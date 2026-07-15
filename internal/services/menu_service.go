@@ -78,12 +78,13 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *
 		return nil, errors.New("menu not found")
 	}
 	item := &models.MenuItem{
-		Name:        req.Name,
-		Description: req.Description,
-		Category:    req.Category,
-		ImageURL:    req.ImageURL,
-		Price:       req.Price,
-		IsAvailable: true,
+		Name:           req.Name,
+		Description:    req.Description,
+		Category:       req.Category,
+		ProductionArea: req.ProductionArea,
+		ImageURL:       req.ImageURL,
+		Price:          req.Price,
+		IsAvailable:    true,
 	}
 	// Only buffet items carry structured buffet_data; ignore it otherwise so the
 	// DB CHECK constraint (buffet_data only for category = 'buffet') is satisfied.
