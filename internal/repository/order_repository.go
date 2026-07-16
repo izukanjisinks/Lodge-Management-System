@@ -494,6 +494,16 @@ func (r *OrderRepository) UpdateBarStatus(id uuid.UUID, orgID uuid.UUID, status 
 	return r.GetByID(id, orgID)
 }
 
+// CloseOrder closes a single open order (e.g. when its invoice is cancelled).
+// No-ops if the order is already closed.
+func (r *OrderRepository) CloseOrder(id uuid.UUID, orgID uuid.UUID) error {
+	_, err := r.db.Exec(
+		`UPDATE orders SET status=$1, updated_at=$2 WHERE id=$3 AND org_id=$4 AND status='open'`,
+		models.OrderStatusClosed, time.Now(), id, orgID,
+	)
+	return err
+}
+
 func (r *OrderRepository) CloseOrdersForDay(orgID uuid.UUID) (int64, error) {
 	res, err := r.db.Exec(`
 		UPDATE orders

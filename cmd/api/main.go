@@ -100,6 +100,7 @@ func main() {
 	bookingSvc.SetInvoiceService(invoiceSvc) // auto-generate draft invoice on booking confirm/materialise
 	bookingSvc.SetOrderRepository(orderRepo)  // approved meals requests materialise into orders
 	bookingSvc.SetClientRepository(clientRepo) // approved bookings populate the individual client registry
+	invoiceSvc.SetBookingService(bookingSvc) // cancelling an invoice cascades to cancel its booking
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)

@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
 	"math"
 	"strings"
 	"time"
@@ -26,6 +27,14 @@ type InvoiceService struct {
 	orderRepo      *repository.OrderRepository
 	emailService   *email.EmailService
 	orgRepo        *repository.OrganizationRepository
+	bookingSvc     *BookingService
+}
+
+// SetBookingService injects the booking service so cancelling an invoice can
+// cascade-cancel its associated booking (accommodation/event) and close any
+// linked meal orders.
+func (s *InvoiceService) SetBookingService(bookingSvc *BookingService) {
+	s.bookingSvc = bookingSvc
 }
 
 // SetEmailService injects the email service used for sending invoice emails.
@@ -510,5 +519,34 @@ func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models
 	if err := s.repo.UpdateStatus(id, orgID, req.Status, req.PaidDate, req.Notes, req.ProofOfPaymentURL); err != nil {
 		return nil, err
 	}
+
+	if req.Status == models.InvoiceStatusCancelled {
+		s.cascadeCancel(inv, orgID)
+	}
+
 	return s.repo.GetByID(id, orgID)
+}
+
+// cascadeCancel cancels the invoice's associated booking (accommodation/event)
+// and closes any linked meal orders, once the invoice itself has been cancelled.
+// assertCancellable already confirmed none of these have started, so these
+// transitions are expected to succeed; failures are logged, not fatal, since the
+// invoice cancellation itself has already been committed.
+func (s *InvoiceService) cascadeCancel(inv *models.Invoice, orgID uuid.UUID) {
+	if inv.BookingID != nil && s.bookingSvc != nil {
+		if err := s.bookingSvc.Cancel(*inv.BookingID, orgID); err != nil {
+			log.Printf("invoice %s cancelled but failed to cancel booking %s: %v", inv.ID, *inv.BookingID, err)
+		}
+	}
+
+	seenOrders := map[uuid.UUID]bool{}
+	for _, li := range inv.LineItems {
+		if li.OrderID == nil || seenOrders[*li.OrderID] {
+			continue
+		}
+		seenOrders[*li.OrderID] = true
+		if err := s.orderRepo.CloseOrder(*li.OrderID, orgID); err != nil {
+			log.Printf("invoice %s cancelled but failed to close order %s: %v", inv.ID, *li.OrderID, err)
+		}
+	}
 }
