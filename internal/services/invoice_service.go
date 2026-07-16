@@ -446,6 +446,43 @@ func (s *InvoiceService) RecalculateRoomCharge(bookingID uuid.UUID, orgID uuid.U
 	return s.GenerateForBooking(bookingID, orgID)
 }
 
+// assertCancellable enforces that an invoice may only be cancelled if the
+// service(s) it covers have not yet started:
+//   - room/event bookings must not have been checked in (or checked out)
+//   - meal orders must not have entered preparation (kitchen or bar)
+func (s *InvoiceService) assertCancellable(inv *models.Invoice, orgID uuid.UUID) error {
+	if inv.BookingID != nil {
+		b, err := s.booking.GetByID(*inv.BookingID, orgID)
+		if err == nil && (b.Status == models.BookingStatusCheckedIn || b.Status == models.BookingStatusCheckedOut) {
+			switch b.BookingType {
+			case models.BookingTypeEvent, models.BookingTypeConference:
+				return errors.New("cannot cancel invoice: the event booking has already been checked in")
+			default:
+				return errors.New("cannot cancel invoice: the room booking has already been checked in")
+			}
+		}
+	}
+
+	seenOrders := map[uuid.UUID]bool{}
+	for _, li := range inv.LineItems {
+		if li.OrderID == nil || seenOrders[*li.OrderID] {
+			continue
+		}
+		seenOrders[*li.OrderID] = true
+
+		order, err := s.orderRepo.GetByID(*li.OrderID, orgID)
+		if err != nil {
+			continue
+		}
+		if order.KitchenStatus == models.KitchenStatusPreparing || order.KitchenStatus == models.KitchenStatusReady ||
+			order.BarStatus == models.BarStatusPreparing || order.BarStatus == models.BarStatusReady {
+			return errors.New("cannot cancel invoice: a meal order has already entered preparation")
+		}
+	}
+
+	return nil
+}
+
 func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
 	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {
@@ -462,6 +499,12 @@ func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models
 	}
 	if !valid {
 		return nil, fmt.Errorf("cannot transition invoice from '%s' to '%s'", inv.Status, req.Status)
+	}
+
+	if req.Status == models.InvoiceStatusCancelled {
+		if err := s.assertCancellable(inv, orgID); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.repo.UpdateStatus(id, orgID, req.Status, req.PaidDate, req.Notes, req.ProofOfPaymentURL); err != nil {
