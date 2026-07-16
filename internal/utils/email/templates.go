@@ -37,7 +37,7 @@ func headerGradient(start, end string) string {
 // loginButton returns the reusable HTML login button block
 func loginButton() string {
 	return fmt.Sprintf(`
-              <table width="100%%%%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
+              <table width="100%%" cellpadding="0" cellspacing="0" style="margin:30px 0;">
                 <tr>
                   <td align="center">
                     <a href="%s"
@@ -60,7 +60,7 @@ func emailWrapper(title, headerStyle, bodyContent string) string {
 </head>
 <body style="margin:0; padding:0; background-color:%s; font-family:%s;">
 
-  <table width="100%%%%" cellpadding="0" cellspacing="0" style="background-color:%s; padding:40px 0;">
+  <table width="100%%" cellpadding="0" cellspacing="0" style="background-color:%s; padding:40px 0;">
     <tr>
       <td align="center">
 
@@ -112,10 +112,10 @@ func infoTable(bgColor, borderColor string, rows ...string) string {
 		rowsHTML += r
 	}
 	return fmt.Sprintf(`
-              <table width="100%%%%" cellpadding="0" cellspacing="0" style="margin:25px 0;">
+              <table width="100%%" cellpadding="0" cellspacing="0" style="margin:25px 0;">
                 <tr>
                   <td style="background-color:%s; border:1px solid %s; padding:20px; border-radius:8px;">
-                    <table width="100%%%%" cellpadding="0" cellspacing="0">
+                    <table width="100%%" cellpadding="0" cellspacing="0">
                       %s
                     </table>
                   </td>
@@ -145,7 +145,7 @@ func signature() string {
 	return fmt.Sprintf(`
               <p style="margin-bottom:0; margin-top:28px;">
                 Best regards,<br/>
-                <strong style="color:%s;">Lodge Management</strong>
+                <strong style="color:%s;">Mwakwanda Lodge Management System</strong>
               </p>`, colorPrimary)
 }
 
@@ -156,7 +156,7 @@ func WelcomeUserTemplate(fullName, userEmail, temporaryPassword string) string {
 	header := headerGradient(colorPrimary, colorPrimaryLight)
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Hello %s,</p>
-              <p>Your account has been created in the Lodge Management System.</p>
+              <p>Your account has been created in the Mwakwanda Lodge Management System.</p>
               %s
               %s
               <p>If you have any questions, please contact your administrator.</p>
@@ -171,7 +171,7 @@ func WelcomeUserTemplate(fullName, userEmail, temporaryPassword string) string {
 			"<strong>Important:</strong> You will be required to change this password on first login."),
 		signature(),
 	)
-	return emailWrapper("Welcome to Lodge Management", header, body)
+	return emailWrapper("Welcome to Mwakwanda Lodge Management System", header, body)
 }
 
 // BackofficeWelcomeTemplate generates HTML for a new backoffice platform admin account
@@ -179,7 +179,7 @@ func BackofficeWelcomeTemplate(fullName, userEmail, temporaryPassword string) st
 	header := headerGradient(colorPrimary, colorPrimaryLight)
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Hello %s,</p>
-              <p>You have been granted access to the <strong>Lodge Management Backoffice Portal</strong> — the platform administration console for managing lodge organisations and platform-level settings.</p>
+              <p>You have been granted access to the <strong>Mwakwanda Lodge Management Backoffice Portal</strong> — the platform administration console for managing lodge organisations and platform-level settings.</p>
               %s
               %s
               <p>If you believe this was sent in error, please contact the platform administrator immediately.</p>
@@ -192,7 +192,7 @@ func BackofficeWelcomeTemplate(fullName, userEmail, temporaryPassword string) st
 		),
 		signature(),
 	)
-	return emailWrapper("Backoffice Portal Access", header, body)
+	return emailWrapper("Mwakwanda Lodge Management Backoffice Portal Access", header, body)
 }
 
 // PasswordResetTemplate generates HTML for password reset notification
@@ -201,7 +201,7 @@ func PasswordResetTemplate(temporaryPassword string) string {
 	body := fmt.Sprintf(`
               <p style="margin-top:0;">Hello,</p>
               <p>Your password has been <strong>reset by an administrator</strong>.</p>
-              <table width="100%%%%" cellpadding="0" cellspacing="0" style="margin:25px 0;">
+              <table width="100%%" cellpadding="0" cellspacing="0" style="margin:25px 0;">
                 <tr>
                   <td style="background-color:%s; border:1px dashed %s; padding:22px; text-align:center; border-radius:8px;">
                     <p style="margin:0; font-size:13px; color:%s; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">Temporary Password</p>
@@ -234,7 +234,7 @@ func GenericTaskAssignedTemplate(recipientName, taskName, taskDescription string
               <p style="margin-top:0;">Hello %s,</p>
               <p>A new task has been assigned to you for your action.</p>
               %s
-              <p>Please log in to the Lodge Management System to review and take action on this task.</p>
+              <p>Please log in to the Mwakwanda Lodge Management System to review and take action on this task.</p>
               %s
               %s`,
 		recipientName,
@@ -258,7 +258,7 @@ func BookingTaskAssignedTemplate(recipientName, bookingID, description, senderNa
               <p>A new booking request has been submitted and requires your review.</p>
               %s
               %s
-              <p>Please log in to the Lodge Management System to approve or reject this booking.</p>
+              <p>Please log in to the Mwakwanda Lodge Management System to approve or reject this booking.</p>
               %s
               %s`,
 		recipientName,
@@ -404,6 +404,24 @@ func PaymentConfirmationEmailTemplate(orgName, clientName, invoiceNumber, paidDa
 		orgName,
 	)
 	return emailWrapper("Payment Received — "+invoiceNumber, header, body)
+}
+
+// TestEmailTemplate generates the HTML body for a one-off SMTP configuration test,
+// sent from the backoffice settings page to confirm outbound mail is working.
+func TestEmailTemplate(recipientLabel string) string {
+	header := headerGradient(colorPrimary, colorPrimaryLight)
+	body := fmt.Sprintf(`
+              <p style="margin-top:0;">Hello%s,</p>
+              <p>Test email from Mwakwanda.</p>
+              %s
+              <p>If you received this message, your outgoing email configuration is working correctly.</p>
+              %s`,
+		recipientLabel,
+		alertBox(colorSuccessBox, colorSuccessBorder, colorAccent,
+			"This is a test message — no action is required."),
+		signature(),
+	)
+	return emailWrapper("SMTP Test — Mwakwanda", header, body)
 }
 
 // InvoiceInfoRow is an exported helper so callers can build extra summary rows

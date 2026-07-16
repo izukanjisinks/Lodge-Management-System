@@ -64,6 +64,7 @@ func main() {
 	log.Println("Email service initialized")
 
 	userService.SetEmailService(emailService)
+	emailTestHandler := handlers.NewEmailTestHandler(emailService)
 
 	guestRepo := repository.NewGuestRepository()
 
@@ -208,6 +209,7 @@ func main() {
 		backofficeOrgHandler,
 		auditLogHandler,
 		orgSettingsHandler,
+		emailTestHandler,
 		branchHandler,
 		orgHandler,
 		webUserAuthHandler,

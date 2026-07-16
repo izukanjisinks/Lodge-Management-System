@@ -23,6 +23,7 @@ func RegisterRoutes(
 	backofficeOrgHandler *handlers.BackofficeOrganizationHandler,
 	auditLogHandler *handlers.AuditLogHandler,
 	orgSettingsHandler *handlers.OrganizationSettingsHandler,
+	emailTestHandler *handlers.EmailTestHandler,
 	branchHandler *handlers.BranchHandler,
 	orgHandler *handlers.OrganizationHandler,
 	webUserHandler *handlers.WebUserAuthHandler,
@@ -47,7 +48,7 @@ func RegisterRoutes(
 	RegisterReviewRoutes(reviewHandler)
 	RegisterBackofficeRoutes(backofficeAuthHandler, backofficeUserHandler, backofficeOrgHandler)
 	RegisterAuditLogRoutes(auditLogHandler)
-	RegisterOrganizationSettingsRoutes(orgSettingsHandler)
+	RegisterOrganizationSettingsRoutes(orgSettingsHandler, emailTestHandler)
 	RegisterBranchRoutes(branchHandler)
 	RegisterOrganizationRoutes(orgHandler)
 	RegisterWebUserRoutes(webUserHandler)
