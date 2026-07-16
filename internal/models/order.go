@@ -70,8 +70,9 @@ type OrderItem struct {
 	MenuItemID   uuid.UUID  `json:"menu_item_id"`
 	AttendeeID   *uuid.UUID `json:"attendee_id,omitempty"`
 	AttendeeName string     `json:"attendee_name,omitempty"`
-	ItemName     string     `json:"item_name,omitempty"`
-	Category     string     `json:"category,omitempty"` // the linked menu item's category, e.g. "drinks"
+	ItemName       string   `json:"item_name,omitempty"`
+	Category       string   `json:"category,omitempty"`        // the linked menu item's category, e.g. "drinks"
+	ProductionArea string   `json:"production_area,omitempty"` // station that prepares this item: kitchen|bakery|bar|grill
 	Quantity     int        `json:"quantity"`
 	UnitPrice    float64    `json:"unit_price"`
 	Subtotal     float64    `json:"subtotal"`

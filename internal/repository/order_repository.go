@@ -654,7 +654,7 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 	rows, err := r.db.Query(`
 		SELECT oi.id, oi.order_id, oi.menu_item_id, oi.attendee_id,
 		       COALESCE(att.full_name, '') AS attendee_name,
-		       mi.name, COALESCE(mi.category, ''), oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at
+		       mi.name, COALESCE(mi.category, ''), mi.production_area, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at
 		FROM order_items oi
 		JOIN menu_items mi ON mi.id = oi.menu_item_id
 		LEFT JOIN booking_attendees att ON att.id = oi.attendee_id
@@ -669,9 +669,9 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 	for rows.Next() {
 		var item models.OrderItem
 		var attendeeID uuid.NullUUID
-		var attendeeName, notes sql.NullString
+		var attendeeName, productionArea, notes sql.NullString
 		if err := rows.Scan(&item.ID, &item.OrderID, &item.MenuItemID, &attendeeID, &attendeeName,
-			&item.ItemName, &item.Category, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt); err != nil {
+			&item.ItemName, &item.Category, &productionArea, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if attendeeID.Valid {
@@ -679,6 +679,9 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 		}
 		if attendeeName.Valid {
 			item.AttendeeName = attendeeName.String
+		}
+		if productionArea.Valid {
+			item.ProductionArea = productionArea.String
 		}
 		if notes.Valid {
 			item.Notes = notes.String
