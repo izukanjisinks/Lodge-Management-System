@@ -53,3 +53,26 @@ type Room struct {
 	CreatedAt     time.Time         `json:"created_at"`
 	UpdatedAt     time.Time         `json:"updated_at"`
 }
+
+// RoomStatusOccupant is one guest currently checked into a room (one row per
+// active booking_room_assignment with status='checked_in').
+type RoomStatusOccupant struct {
+	AssignmentID  uuid.UUID `json:"assignment_id"`
+	BookingID     uuid.UUID `json:"booking_id"`
+	BookingNumber string    `json:"booking_number"`
+	Name          string    `json:"name"`
+	Phone         string    `json:"phone,omitempty"`
+	CheckOut      time.Time `json:"check_out"`
+	// Overstaying combines the assignment's own booked check-out date (works
+	// until the nightly overstay job auto-extends it forward) with the
+	// booking-level "overstayed" flag (durable, but can't pinpoint who in a
+	// shared room — so a flagged booking marks all its current occupants).
+	Overstaying bool `json:"overstaying"`
+}
+
+// RoomStatus is a single room plus whoever is currently checked into it —
+// the shape the Room Status board renders directly, no client-side fan-out.
+type RoomStatus struct {
+	Room      Room                 `json:"room"`
+	Occupants []RoomStatusOccupant `json:"occupants"`
+}

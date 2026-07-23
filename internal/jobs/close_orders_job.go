@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"log"
 	"time"
 
@@ -48,7 +49,7 @@ func (j *CloseOrdersJob) run() {
 
 	totalClosed := int64(0)
 	for _, orgID := range orgIDs {
-		n, err := j.orderSvc.CloseAllOrders(orgID)
+		n, err := j.orderSvc.CloseAllOrders(context.Background(), orgID)
 		if err != nil {
 			log.Printf("[close-orders] failed to close orders for org %s: %v", orgID, err)
 			continue

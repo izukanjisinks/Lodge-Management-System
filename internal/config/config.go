@@ -15,6 +15,9 @@ type Config struct {
 	DBSSLMode  string
 	ServerPort string
 	JWTSecret  string
+	Env        string
+	LogLevel   string // debug | info | warn | error
+	LogFormat  string // json | text
 	Email      EmailConfig
 }
 
@@ -42,6 +45,9 @@ func Load() *Config {
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		ServerPort: getEnv("SERVER_PORT", "8080"),
 		JWTSecret:  getEnv("JWT_SECRET", "lodge-system-secret-key"),
+		Env:        getEnv("ENV", "development"),
+		LogLevel:   getEnv("LOG_LEVEL", "info"),
+		LogFormat:  getEnv("LOG_FORMAT", "text"),
 		Email: EmailConfig{
 			Host:       getEnv("EMAIL_HOST", "smtp.gmail.com"),
 			Port:       getEnv("EMAIL_PORT", "587"),

@@ -5,11 +5,17 @@ import (
 	"log"
 	"net/http"
 
+	"go.uber.org/zap"
+
 	"lodge-system/internal/config"
 	"lodge-system/internal/database"
 	"lodge-system/internal/handlers"
+	"lodge-system/internal/interfaces"
 	"lodge-system/internal/jobs"
+	applogger "lodge-system/internal/logger"
 	"lodge-system/internal/middleware"
+	loggermw "lodge-system/internal/middleware/logger"
+	telemetrymw "lodge-system/internal/middleware/telemetry"
 	"lodge-system/internal/repositories"
 	"lodge-system/internal/repository"
 	"lodge-system/internal/routes"
@@ -20,15 +26,29 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Structured logging. Install as the global logger so both handler-injected
+	// loggers and zap.L() calls in service decorators share one configured sink.
+	appLog, err := applogger.New(cfg.LogLevel, cfg.LogFormat)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer func() { _ = appLog.Sync() }()
+	zap.ReplaceGlobals(appLog)
+
+	appLog.Info("Starting Lodge Management System",
+		zap.String("env", cfg.Env),
+		zap.String("port", cfg.ServerPort),
+	)
+
 	connStr := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode,
 	)
 	if err := database.Connect(connStr); err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		appLog.Fatal("Failed to connect to database", zap.Error(err))
 	}
 	defer database.Close()
-	log.Println("Database connected")
+	appLog.Info("Database connected", zap.String("host", cfg.DBHost), zap.String("db", cfg.DBName))
 
 	// Repositories
 	userRepo := repository.NewUserRepository()
@@ -133,7 +153,12 @@ func main() {
 	menuRepo := repository.NewMenuRepository()
 	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
 	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
-	orderHandler := handlers.NewOrderHandler(orderSvc)
+	// Decorate the order service: service -> logging -> telemetry. The handler
+	// depends on the interface, so it can't tell it's talking to a decorator stack.
+	var orderIface interfaces.OrderInterface = orderSvc
+	orderIface = loggermw.NewOrderLoggerMiddleware(orderIface)
+	orderIface = telemetrymw.NewOrderTelemetryMiddleware(orderIface)
+	orderHandler := handlers.NewOrderHandler(orderIface)
 
 	// Resident meal collection (sessions, cards, collect)
 	mealSessionRepo := repository.NewMealSessionRepository()

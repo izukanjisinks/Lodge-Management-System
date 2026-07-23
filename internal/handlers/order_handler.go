@@ -4,20 +4,20 @@ import (
 	"net/http"
 	"time"
 
+	"lodge-system/internal/interfaces"
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type OrderHandler struct {
-	service *services.OrderService
+	service interfaces.OrderInterface
 }
 
-func NewOrderHandler(service *services.OrderService) *OrderHandler {
+func NewOrderHandler(service interfaces.OrderInterface) *OrderHandler {
 	return &OrderHandler{service: service}
 }
 
@@ -64,7 +64,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 		to = &end
 	}
 
-	orders, total, err := h.service.List(orgID, branchID, orderType, status, bookingID, from, to, pag.Page, pag.PageSize)
+	orders, total, err := h.service.List(r.Context(), orgID, branchID, orderType, status, bookingID, from, to, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -79,7 +79,7 @@ func (h *OrderHandler) List(w http.ResponseWriter, r *http.Request) {
 
 func (h *OrderHandler) ListInHouseGuests(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	guests, err := h.service.ListCheckedInGuests(orgID)
+	guests, err := h.service.ListCheckedInGuests(r.Context(), orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -98,7 +98,7 @@ func (h *OrderHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	order, err := h.service.GetByID(id, orgID)
+	order, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -116,7 +116,7 @@ func (h *OrderHandler) PlaceOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	branchID, _ := middleware.ResolveBranchID(r)
-	order, err := h.service.PlaceOrder(orgID, branchID, &req)
+	order, err := h.service.PlaceOrder(r.Context(), orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -134,7 +134,7 @@ func (h *OrderHandler) PlaceWalkInOrder(w http.ResponseWriter, r *http.Request) 
 	}
 
 	branchID, _ := middleware.ResolveBranchID(r)
-	order, err := h.service.PlaceWalkInOrder(orgID, branchID, &req)
+	order, err := h.service.PlaceWalkInOrder(r.Context(), orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -145,7 +145,7 @@ func (h *OrderHandler) PlaceWalkInOrder(w http.ResponseWriter, r *http.Request) 
 func (h *OrderHandler) CloseAllOrders(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	n, err := h.service.CloseAllOrders(orgID)
+	n, err := h.service.CloseAllOrders(r.Context(), orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -166,7 +166,7 @@ func (h *OrderHandler) RemoveItem(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.RemoveItem(itemID, id, orgID); err != nil {
+	if err := h.service.RemoveItem(r.Context(), itemID, id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -189,7 +189,7 @@ func (h *OrderHandler) UpdateKitchenStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	order, err := h.service.UpdateKitchenStatus(id, orgID, req.KitchenStatus)
+	order, err := h.service.UpdateKitchenStatus(r.Context(), id, orgID, req.KitchenStatus)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -213,7 +213,7 @@ func (h *OrderHandler) UpdateBarStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.service.UpdateBarStatus(id, orgID, req.BarStatus)
+	order, err := h.service.UpdateBarStatus(r.Context(), id, orgID, req.BarStatus)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -235,7 +235,7 @@ func (h *OrderHandler) AddItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.service.AddItems(id, orgID, &req)
+	order, err := h.service.AddItems(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

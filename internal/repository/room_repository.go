@@ -204,6 +204,79 @@ func (r *RoomRepository) List(orgID uuid.UUID, branchID *uuid.UUID, roomType str
 	return rooms, total, rows.Err()
 }
 
+// ListRoomStatus returns every room in scope along with whoever is currently
+// checked into it, in two queries total (rooms, then occupants) instead of the
+// N+1 fan-out the frontend previously had to do via per-booking detail calls.
+func (r *RoomRepository) ListRoomStatus(orgID uuid.UUID, branchID *uuid.UUID) ([]models.RoomStatus, error) {
+	args := []interface{}{orgID}
+	where := []string{"org_id = $1"}
+	if branchID != nil {
+		args = append(args, *branchID)
+		where = append(where, fmt.Sprintf("branch_id = $%d", len(args)))
+	}
+
+	rows, err := r.db.Query(fmt.Sprintf(`
+		SELECT id, org_id, branch_id, name, type, capacity, price_per_night, amenities, images, is_available, description, created_at, updated_at
+		FROM rooms WHERE %s
+		ORDER BY name ASC`, strings.Join(where, " AND ")), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statusByRoomID := make(map[uuid.UUID]*models.RoomStatus)
+	var order []uuid.UUID
+	for rows.Next() {
+		room, err := scanRoom(rows)
+		if err != nil {
+			return nil, err
+		}
+		statusByRoomID[room.ID] = &models.RoomStatus{Room: *room, Occupants: []models.RoomStatusOccupant{}}
+		order = append(order, room.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	occRows, err := r.db.Query(`
+		SELECT bra.id, bra.room_id, bra.booking_id, b.booking_number,
+		       COALESCE(att.full_name, ''), COALESCE(att.phone, ''),
+		       bra.check_out, b.overstayed
+		FROM booking_room_assignments bra
+		JOIN bookings b ON b.id = bra.booking_id
+		LEFT JOIN booking_attendees att ON att.id = bra.attendee_id
+		WHERE b.org_id = $1 AND bra.status = 'checked_in'`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer occRows.Close()
+
+	for occRows.Next() {
+		var roomID uuid.UUID
+		var occ models.RoomStatusOccupant
+		var overstayedFlag bool
+		if err := occRows.Scan(&occ.AssignmentID, &roomID, &occ.BookingID, &occ.BookingNumber,
+			&occ.Name, &occ.Phone, &occ.CheckOut, &overstayedFlag); err != nil {
+			return nil, err
+		}
+		status, ok := statusByRoomID[roomID]
+		if !ok {
+			continue // room outside the branch filter — shouldn't happen, but stay defensive
+		}
+		occ.Overstaying = overstayedFlag || occ.CheckOut.Before(time.Now().Truncate(24*time.Hour))
+		status.Occupants = append(status.Occupants, occ)
+	}
+	if err := occRows.Err(); err != nil {
+		return nil, err
+	}
+
+	result := make([]models.RoomStatus, 0, len(order))
+	for _, id := range order {
+		result = append(result, *statusByRoomID[id])
+	}
+	return result, nil
+}
+
 func (r *RoomRepository) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	args := []interface{}{checkOut, checkIn, orgID}
 	extra := ""
@@ -239,7 +312,7 @@ func (r *RoomRepository) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, che
 		if err != nil {
 			return nil, err
 		}
-			rooms = append(rooms, *room)
+		rooms = append(rooms, *room)
 	}
 	return rooms, rows.Err()
 }

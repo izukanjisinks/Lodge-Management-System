@@ -66,6 +66,10 @@ func (s *RoomService) List(orgID uuid.UUID, branchID *uuid.UUID, roomType string
 	return s.repo.List(orgID, branchID, roomType, isAvailable, page, pageSize)
 }
 
+func (s *RoomService) ListRoomStatus(orgID uuid.UUID, branchID *uuid.UUID) ([]models.RoomStatus, error) {
+	return s.repo.ListRoomStatus(orgID, branchID)
+}
+
 func (s *RoomService) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	if checkIn.IsZero() || checkOut.IsZero() {
 		return nil, errors.New("check_in and check_out are required")

@@ -1,16 +1,17 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type OrderService struct {
@@ -31,7 +32,7 @@ func NewOrderService(
 
 // PlaceOrder creates a new in-house order tied to a confirmed/checked-in booking
 // and immediately appends a line item to the booking's invoice.
-func (s *OrderService) PlaceOrder(orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceOrderRequest) (*models.Order, error) {
+func (s *OrderService) PlaceOrder(_ context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceOrderRequest) (*models.Order, error) {
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
@@ -65,7 +66,7 @@ func (s *OrderService) PlaceOrder(orgID uuid.UUID, branchID *uuid.UUID, req *mod
 }
 
 // PlaceWalkInOrder creates a new walk-in order with no booking — no invoice entry.
-func (s *OrderService) PlaceWalkInOrder(orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceWalkInOrderRequest) (*models.Order, error) {
+func (s *OrderService) PlaceWalkInOrder(_ context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.PlaceWalkInOrderRequest) (*models.Order, error) {
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
@@ -81,7 +82,7 @@ func (s *OrderService) PlaceWalkInOrder(orgID uuid.UUID, branchID *uuid.UUID, re
 }
 
 // AddItems appends more items to an existing order and updates the invoice immediately.
-func (s *OrderService) AddItems(orderID uuid.UUID, orgID uuid.UUID, req *models.AddOrderItemsRequest) (*models.Order, error) {
+func (s *OrderService) AddItems(_ context.Context, orderID uuid.UUID, orgID uuid.UUID, req *models.AddOrderItemsRequest) (*models.Order, error) {
 	if len(req.Items) == 0 {
 		return nil, errors.New("at least one item is required")
 	}
@@ -95,7 +96,7 @@ func (s *OrderService) AddItems(orderID uuid.UUID, orgID uuid.UUID, req *models.
 }
 
 // RemoveItem removes a single item from an open order and removes its invoice line item if one exists.
-func (s *OrderService) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uuid.UUID) error {
+func (s *OrderService) RemoveItem(_ context.Context, itemID uuid.UUID, orderID uuid.UUID, orgID uuid.UUID) error {
 	order, err := s.repo.GetByID(orderID, orgID)
 	if err != nil {
 		return errors.New("order not found")
@@ -107,14 +108,16 @@ func (s *OrderService) RemoveItem(itemID uuid.UUID, orderID uuid.UUID, orgID uui
 
 	if order.BookingID != nil {
 		if invErr := s.invoice.RemoveOrderLineItem(*order.BookingID, orgID, itemID); invErr != nil {
-			fmt.Printf("warning: failed to remove invoice line item for order item %s: %v\n", itemID, invErr)
+			zap.L().Warn("failed to remove invoice line item for order item",
+				zap.String("order_item_id", itemID.String()),
+				zap.Error(invErr))
 		}
 	}
 	return nil
 }
 
 // UpdateKitchenStatus advances the kitchen status of an open order.
-func (s *OrderService) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+func (s *OrderService) UpdateKitchenStatus(_ context.Context, id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
 	switch status {
 	case models.KitchenStatusNew, models.KitchenStatusPreparing, models.KitchenStatusReady:
 	default:
@@ -125,7 +128,7 @@ func (s *OrderService) UpdateKitchenStatus(id uuid.UUID, orgID uuid.UUID, status
 
 // UpdateBarStatus advances the bar status of an open order. Independent of
 // kitchen_status — an order can carry both statuses at once.
-func (s *OrderService) UpdateBarStatus(id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
+func (s *OrderService) UpdateBarStatus(_ context.Context, id uuid.UUID, orgID uuid.UUID, status string) (*models.Order, error) {
 	switch status {
 	case models.BarStatusNew, models.BarStatusPreparing, models.BarStatusReady:
 	default:
@@ -135,7 +138,7 @@ func (s *OrderService) UpdateBarStatus(id uuid.UUID, orgID uuid.UUID, status str
 }
 
 // CloseAllOrders closes every open order for the org. Returns the count closed.
-func (s *OrderService) CloseAllOrders(orgID uuid.UUID) (int64, error) {
+func (s *OrderService) CloseAllOrders(_ context.Context, orgID uuid.UUID) (int64, error) {
 	count, err := s.repo.CloseOrdersForDay(orgID)
 	if err != nil {
 		return 0, err
@@ -153,7 +156,7 @@ func (s *OrderService) writeOrdersClosedAuditLog(orgID uuid.UUID, count int64) {
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("[order-service] failed to marshal audit payload for orders.closed: %v", err)
+		zap.L().Error("failed to marshal audit payload for orders.closed", zap.Error(err))
 		return
 	}
 	entry := &models.AuditLog{
@@ -166,15 +169,17 @@ func (s *OrderService) writeOrdersClosedAuditLog(orgID uuid.UUID, count int64) {
 		Payload:    raw,
 	}
 	if err := s.auditLog.Insert(entry); err != nil {
-		log.Printf("[order-service] failed to write audit log for orders.closed (org %s): %v", orgID, err)
+		zap.L().Error("failed to write audit log for orders.closed",
+			zap.String("org_id", orgID.String()),
+			zap.Error(err))
 	}
 }
 
-func (s *OrderService) ListCheckedInGuests(orgID uuid.UUID) ([]repository.InHouseGuest, error) {
+func (s *OrderService) ListCheckedInGuests(_ context.Context, orgID uuid.UUID) ([]repository.InHouseGuest, error) {
 	return s.repo.ListCheckedInGuests(orgID)
 }
 
-func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
+func (s *OrderService) GetByID(_ context.Context, id uuid.UUID, orgID uuid.UUID) (*models.Order, error) {
 	o, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("order not found")
@@ -182,7 +187,7 @@ func (s *OrderService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Order, er
 	return o, nil
 }
 
-func (s *OrderService) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
+func (s *OrderService) List(_ context.Context, orgID uuid.UUID, branchID *uuid.UUID, orderType, status string, bookingID *uuid.UUID, from, to *time.Time, page, pageSize int) ([]models.Order, int, error) {
 	return s.repo.List(orgID, branchID, orderType, status, bookingID, from, to, page, pageSize)
 }
 
@@ -230,7 +235,10 @@ func (s *OrderService) appendToInvoice(order *models.Order, orgID uuid.UUID, ite
 			Total:       item.Subtotal,
 		}
 		if err := s.invoice.AppendOrderLineItem(inv.ID, orgID, lineItem); err != nil {
-			fmt.Printf("warning: failed to append order item %s to invoice %s: %v\n", item.ID, inv.ID, err)
+			zap.L().Warn("failed to append order item to invoice",
+				zap.String("order_item_id", item.ID.String()),
+				zap.String("invoice_id", inv.ID.String()),
+				zap.Error(err))
 		}
 	}
 }

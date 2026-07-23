@@ -15,6 +15,9 @@ func RegisterRoomRoutes(h *handlers.RoomHandler) {
 	http.HandleFunc("GET /api/v1/rooms/available",
 		withAuth(h.ListAvailable))
 
+	http.HandleFunc("GET /api/v1/rooms/status",
+		withAuth(h.Status))
+
 	http.HandleFunc("GET /api/v1/rooms/{id}",
 		withAuth(h.GetByID))
 

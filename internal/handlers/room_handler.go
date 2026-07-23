@@ -51,6 +51,27 @@ func (h *RoomHandler) List(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Status handles GET /api/v1/rooms/status — every room with whoever is
+// currently checked into it, for the Room Status board. Replaces the
+// frontend's old rooms + bookings(x2) + per-booking-detail fan-out with one call.
+func (h *RoomHandler) Status(w http.ResponseWriter, r *http.Request) {
+	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
+
+	branchID, err := middleware.ResolveBranchID(r)
+	if err != nil {
+		utils.RespondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	statuses, err := h.service.ListRoomStatus(orgID, branchID)
+	if err != nil {
+		utils.RespondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	utils.RespondJSON(w, http.StatusOK, statuses)
+}
+
 // GuestList handles GET /api/v1/guest/rooms — public, org_id and branch_id are optional filters
 func (h *RoomHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 	var orgID *uuid.UUID
