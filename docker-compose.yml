@@ -67,6 +67,11 @@ services:
       EMAIL_USE_TLS: ${EMAIL_USE_TLS:-true}
       EMAIL_USE_SSL: ${EMAIL_USE_SSL:-false}
       EMAIL_AUTH_METHOD: ${EMAIL_AUTH_METHOD:-PLAIN}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ── Back Office (staff SPA) ────────────────────────────────────────────────
   lodge-backoffice:
