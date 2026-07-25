@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,7 +37,7 @@ func (s *IndividualBookingRequestService) SetWorkflowService(svc *WorkflowServic
 
 // ─── Submission ───────────────────────────────────────────────────────────────
 
-func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) Submit(ctx context.Context, guestID uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -73,7 +74,7 @@ func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.
 	// Store the entire envelope as-is in JSONB
 	payloadBytes, _ := json.Marshal(req)
 
-	booking, err := s.bookingService.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.bookingService.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:       orgID,
 		BranchID:    branchID,
 		WebUserID:   &guestID,
@@ -96,7 +97,7 @@ func (s *IndividualBookingRequestService) Submit(guestID uuid.UUID, req *models.
 // SubmitEvent stores a standalone individual event request (Flow B). It reuses the
 // shared event envelope (no company/approver for individuals), persists the whole
 // payload as JSONB with booking_type='event', and starts the approval workflow.
-func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) SubmitEvent(ctx context.Context, guestID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -119,7 +120,7 @@ func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *mo
 
 	payloadBytes, _ := json.Marshal(req)
 
-	booking, err := s.bookingService.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.bookingService.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:       orgID,
 		BranchID:    req.BranchID,
 		WebUserID:   &guestID,
@@ -142,7 +143,7 @@ func (s *IndividualBookingRequestService) SubmitEvent(guestID uuid.UUID, req *mo
 // SubmitMeal stores a standalone individual meal request (Flow B). The full
 // envelope is persisted as JSONB with booking_type='meals' and the approval
 // workflow is started immediately.
-func (s *IndividualBookingRequestService) SubmitMeal(guestID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) SubmitMeal(ctx context.Context, guestID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" || req.BookedBy.Email == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -155,7 +156,7 @@ func (s *IndividualBookingRequestService) SubmitMeal(guestID uuid.UUID, req *mod
 
 	payloadBytes, _ := json.Marshal(req)
 
-	booking, err := s.bookingService.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.bookingService.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:       req.OrgID,
 		BranchID:    req.BranchID,
 		WebUserID:   &guestID,
@@ -178,7 +179,7 @@ func (s *IndividualBookingRequestService) SubmitMeal(guestID uuid.UUID, req *mod
 // WalkInMeal creates a confirmed individual meal booking directly (no pending state,
 // no approval workflow) — for a walk-in guest booking in person. Materialises orders
 // immediately via CreateIndividualMeal with no web user attached.
-func (s *IndividualBookingRequestService) WalkInMeal(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) WalkInMeal(ctx context.Context, orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -187,12 +188,12 @@ func (s *IndividualBookingRequestService) WalkInMeal(orgID uuid.UUID, req *model
 	}
 	req.OrgID = orgID
 	metadata, _ := json.Marshal(req)
-	return s.bookingService.CreateIndividualMeal(orgID, nil, nil, req, metadata)
+	return s.bookingService.CreateIndividualMeal(ctx, orgID, nil, nil, req, metadata)
 }
 
 // WalkInEvent creates a confirmed individual event booking directly (no pending
 // state, no approval workflow). Materialises event sessions immediately.
-func (s *IndividualBookingRequestService) WalkInEvent(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) WalkInEvent(ctx context.Context, orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -201,13 +202,13 @@ func (s *IndividualBookingRequestService) WalkInEvent(orgID uuid.UUID, req *mode
 	}
 	req.OrgID = orgID
 	metadata, _ := json.Marshal(req)
-	return s.bookingService.CreateIndividualEvent(orgID, nil, nil, req, metadata)
+	return s.bookingService.CreateIndividualEvent(ctx, orgID, nil, nil, req, metadata)
 }
 
 // WalkInAccommodation creates a confirmed individual accommodation booking directly
 // (no pending state, no approval) with one attendee + room assignment per room slot.
 // Supports multiple named guests, each assigned their own room.
-func (s *IndividualBookingRequestService) WalkInAccommodation(orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.Booking, error) {
+func (s *IndividualBookingRequestService) WalkInAccommodation(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitIndividualBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -219,7 +220,7 @@ func (s *IndividualBookingRequestService) WalkInAccommodation(orgID uuid.UUID, b
 		req.BranchID = branchID
 	}
 	metadata, _ := json.Marshal(req)
-	return s.bookingService.CreateIndividualRooms(
+	return s.bookingService.CreateIndividualRooms(ctx,
 		orgID, branchID, uuid.Nil, nil,
 		req.BookedBy.Name, req.BookedBy.Email, req.BookedBy.Phone,
 		req, metadata,
@@ -229,8 +230,8 @@ func (s *IndividualBookingRequestService) WalkInAccommodation(orgID uuid.UUID, b
 // ─── Web user ─────────────────────────────────────────────────────────────────
 
 // GetForWebUser returns a single booking owned by the web user, shaped as a request.
-func (s *IndividualBookingRequestService) GetForWebUser(id, webUserID uuid.UUID) (*models.IndividualBookingRequest, error) {
-	b, err := s.bookingService.GetByIDUnscoped(id)
+func (s *IndividualBookingRequestService) GetForWebUser(ctx context.Context, id, webUserID uuid.UUID) (*models.IndividualBookingRequest, error) {
+	b, err := s.bookingService.GetByIDUnscoped(ctx, id)
 	if err != nil || b.WebUserID == nil || *b.WebUserID != webUserID {
 		return nil, errors.New("booking not found")
 	}
@@ -239,8 +240,8 @@ func (s *IndividualBookingRequestService) GetForWebUser(id, webUserID uuid.UUID)
 
 // ListForWebUser returns the web user's bookings shaped as requests. Retained for the
 // legacy /web/bookings endpoint; the website now reads /web/my-bookings directly.
-func (s *IndividualBookingRequestService) ListForWebUser(webUserID uuid.UUID, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
-	bookings, total, err := s.bookingService.ListForWebUser(webUserID, page, pageSize)
+func (s *IndividualBookingRequestService) ListForWebUser(ctx context.Context, webUserID uuid.UUID, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
+	bookings, total, err := s.bookingService.ListForWebUser(ctx, webUserID, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -253,13 +254,13 @@ func (s *IndividualBookingRequestService) ListForWebUser(webUserID uuid.UUID, pa
 
 // CancelForWebUser cancels a pending booking the web user owns (single-phase: the id
 // is a booking ID) and cancels the associated workflow instance.
-func (s *IndividualBookingRequestService) CancelForWebUser(id, webUserID uuid.UUID) error {
-	orgID, err := s.bookingService.CancelForWebUser(id, webUserID)
+func (s *IndividualBookingRequestService) CancelForWebUser(ctx context.Context, id, webUserID uuid.UUID) error {
+	orgID, err := s.bookingService.CancelForWebUser(ctx, id, webUserID)
 	if err != nil {
 		return err
 	}
 	if s.workflow != nil {
-		_ = s.workflow.CancelInstance(id.String(), orgID.String())
+		_ = s.workflow.CancelInstance(ctx, id.String(), orgID.String())
 	}
 	return nil
 }
@@ -269,8 +270,8 @@ func (s *IndividualBookingRequestService) CancelForWebUser(id, webUserID uuid.UU
 // GetByID returns a pending individual booking shaped as an IndividualBookingRequest
 // so the back-office task screen (which reads .payload/.booking_type) keeps working.
 // Single-phase: the id is a booking ID and payload comes from metadata.
-func (s *IndividualBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.IndividualBookingRequest, error) {
-	b, err := s.bookingService.GetForApproval(id, orgID)
+func (s *IndividualBookingRequestService) GetByID(ctx context.Context, id, orgID uuid.UUID) (*models.IndividualBookingRequest, error) {
+	b, err := s.bookingService.GetForApproval(ctx, id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -279,8 +280,8 @@ func (s *IndividualBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.
 
 // List returns pending individual bookings shaped as requests for the back-office
 // "booking requests" screen.
-func (s *IndividualBookingRequestService) List(orgID uuid.UUID, status string, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
-	bookings, total, err := s.bookingService.List(orgID, models.BookerTypeIndividual, "", models.BookingStatusPending, nil, nil, page, pageSize)
+func (s *IndividualBookingRequestService) List(ctx context.Context, orgID uuid.UUID, status string, page, pageSize int) ([]models.IndividualBookingRequest, int, error) {
+	bookings, total, err := s.bookingService.List(ctx, orgID, models.BookerTypeIndividual, "", models.BookingStatusPending, nil, nil, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -312,21 +313,21 @@ func bookingToIndividualRequest(b *models.Booking) *models.IndividualBookingRequ
 // ApproveFromWorkflow adapts Approve to the workflow's BookingRequestApprover
 // interface — it materialises the booking but discards the returned record, since
 // the workflow only needs the success/failure signal.
-func (s *IndividualBookingRequestService) ApproveFromWorkflow(id, orgID uuid.UUID) error {
-	_, err := s.Approve(id, orgID)
+func (s *IndividualBookingRequestService) ApproveFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error {
+	_, err := s.Approve(ctx, id, orgID)
 	return err
 }
 
 // RejectFromWorkflow adapts Reject to the workflow's BookingRequestApprover interface.
-func (s *IndividualBookingRequestService) RejectFromWorkflow(id, orgID uuid.UUID) error {
-	return s.Reject(id, orgID)
+func (s *IndividualBookingRequestService) RejectFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error {
+	return s.Reject(ctx, id, orgID)
 }
 
 // Approve promotes a pending individual booking (id is the booking ID) into a
 // confirmed booking, materialising children from the envelope stored in the
 // booking's metadata. The pending booking row is promoted in place — no new row.
-func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.Booking, error) {
-	b, err := s.bookingService.GetForApproval(id, orgID)
+func (s *IndividualBookingRequestService) Approve(ctx context.Context, id, orgID uuid.UUID) (*models.Booking, error) {
+	b, err := s.bookingService.GetForApproval(ctx, id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -343,7 +344,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		if jsonErr := json.Unmarshal(b.Metadata, &envelope); jsonErr != nil || envelope.Meal == nil {
 			return nil, errors.New("invalid meal booking payload")
 		}
-		return s.bookingService.CreateIndividualMeal(orgID, b.WebUserID, &id, &envelope, b.Metadata)
+		return s.bookingService.CreateIndividualMeal(ctx, orgID, b.WebUserID, &id, &envelope, b.Metadata)
 	}
 
 	// Event bookings materialise via the shared multi-session engine.
@@ -352,7 +353,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		if jsonErr := json.Unmarshal(b.Metadata, &envelope); jsonErr != nil || envelope.Event == nil {
 			return nil, errors.New("invalid event booking payload")
 		}
-		return s.bookingService.CreateIndividualEvent(orgID, b.WebUserID, &id, &envelope, b.Metadata)
+		return s.bookingService.CreateIndividualEvent(ctx, orgID, b.WebUserID, &id, &envelope, b.Metadata)
 	}
 
 	// Accommodation: decode the stored envelope (new shape first, legacy fallback).
@@ -372,7 +373,7 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 			branchID = firstRoom.BranchID
 		}
 
-		return s.bookingService.CreateIndividualRooms(
+		return s.bookingService.CreateIndividualRooms(ctx,
 			orgID,
 			branchID,
 			id,
@@ -427,21 +428,20 @@ func (s *IndividualBookingRequestService) Approve(id, orgID uuid.UUID) (*models.
 		PromoteID:   &id,
 	}
 
-	return s.bookingService.CreateIndividual(orgID, room.BranchID, bookingReq, bookingReq.Metadata)
+	return s.bookingService.CreateIndividual(ctx, orgID, room.BranchID, bookingReq, bookingReq.Metadata)
 }
 
 // Reject marks a pending individual booking as rejected.
-func (s *IndividualBookingRequestService) Reject(id, orgID uuid.UUID) error {
-	return s.bookingService.SetStatus(id, orgID, models.BookingStatusRejected, models.BookingStatusPending)
+func (s *IndividualBookingRequestService) Reject(ctx context.Context, id, orgID uuid.UUID) error {
+	return s.bookingService.SetStatus(ctx, id, orgID, models.BookingStatusRejected, models.BookingStatusPending)
 }
 
 // Cancel marks a pending individual booking as cancelled.
-func (s *IndividualBookingRequestService) Cancel(id, orgID uuid.UUID) error {
-	return s.bookingService.SetStatus(id, orgID, models.BookingStatusCancelled, models.BookingStatusPending)
+func (s *IndividualBookingRequestService) Cancel(ctx context.Context, id, orgID uuid.UUID) error {
+	return s.bookingService.SetStatus(ctx, id, orgID, models.BookingStatusCancelled, models.BookingStatusPending)
 }
 
 // ─── Metadata builders ────────────────────────────────────────────────────────
-
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
 
@@ -468,7 +468,7 @@ func (s *IndividualBookingRequestService) startWorkflow(b *models.Booking, label
 		if b.BranchID != nil {
 			taskDetails.BranchID = b.BranchID.String()
 		}
-		if _, err := s.workflow.InitiateWorkflow(
+		if _, err := s.workflow.InitiateWorkflow(context.Background(),
 			models.WorkflowTypeBookingApproval,
 			taskDetails,
 			b.ID.String(),

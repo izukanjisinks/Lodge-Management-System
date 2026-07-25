@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"lodge-system/internal/models"
@@ -12,7 +13,7 @@ import (
 
 var validCardRoles = map[string]bool{models.CardRoleResident: true, models.CardRoleRoomService: true}
 
-func (s *MealCollectionService) AssignCard(orgID uuid.UUID, branchID *uuid.UUID, req *models.AssignCardRequest) (*models.MealCard, error) {
+func (s *MealCollectionService) AssignCard(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.AssignCardRequest) (*models.MealCard, error) {
 	if req.CardUID == "" {
 		return nil, errors.New("card_uid is required")
 	}
@@ -44,11 +45,11 @@ func (s *MealCollectionService) AssignCard(orgID uuid.UUID, branchID *uuid.UUID,
 	return s.cards.GetByID(card.ID, orgID)
 }
 
-func (s *MealCollectionService) ListCards(orgID uuid.UUID, roomID *uuid.UUID, status string) ([]models.MealCard, error) {
+func (s *MealCollectionService) ListCards(ctx context.Context, orgID uuid.UUID, roomID *uuid.UUID, status string) ([]models.MealCard, error) {
 	return s.cards.List(orgID, roomID, status)
 }
 
-func (s *MealCollectionService) UpdateCard(id, orgID uuid.UUID, req *models.UpdateCardRequest) (*models.MealCard, error) {
+func (s *MealCollectionService) UpdateCard(ctx context.Context, id, orgID uuid.UUID, req *models.UpdateCardRequest) (*models.MealCard, error) {
 	if req.Role != nil && !validCardRoles[*req.Role] {
 		return nil, errors.New("invalid card role")
 	}
@@ -67,7 +68,7 @@ func (s *MealCollectionService) UpdateCard(id, orgID uuid.UUID, req *models.Upda
 	return s.cards.GetByID(id, orgID)
 }
 
-func (s *MealCollectionService) ReplaceCard(id, orgID uuid.UUID, req *models.ReplaceCardRequest) (*models.MealCard, error) {
+func (s *MealCollectionService) ReplaceCard(ctx context.Context, id, orgID uuid.UUID, req *models.ReplaceCardRequest) (*models.MealCard, error) {
 	if req.NewCardUID == "" {
 		return nil, errors.New("new_card_uid is required")
 	}
@@ -81,7 +82,7 @@ func (s *MealCollectionService) ReplaceCard(id, orgID uuid.UUID, req *models.Rep
 	return card, nil
 }
 
-func (s *MealCollectionService) VoidCard(id, orgID uuid.UUID) (*models.MealCard, error) {
+func (s *MealCollectionService) VoidCard(ctx context.Context, id, orgID uuid.UUID) (*models.MealCard, error) {
 	if err := s.cards.Void(id, orgID); err != nil {
 		return nil, notFoundOr(err, "card not found")
 	}

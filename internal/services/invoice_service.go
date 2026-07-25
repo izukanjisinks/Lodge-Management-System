@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -61,7 +62,7 @@ func NewInvoiceService(
 
 // GenerateForBooking auto-creates an invoice when a booking is confirmed.
 // It derives line items from booking_room_assignments.
-func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID) error {
+func (s *InvoiceService) GenerateForBooking(ctx context.Context, bookingID uuid.UUID, orgID uuid.UUID) error {
 	existing, _ := s.repo.GetByBookingID(bookingID, orgID)
 	if existing != nil {
 		return nil
@@ -105,8 +106,8 @@ func (s *InvoiceService) GenerateForBooking(bookingID uuid.UUID, orgID uuid.UUID
 		Status:      models.InvoiceStatusDraft,
 		// IssuedDate stays nil for drafts — it is stamped when the invoice is issued
 		// (see InvoiceRepository.UpdateStatus). Keeps "Created" and "Issued" distinct.
-		DueDate:     &latestCheckOut,
-		Metadata:    b.Metadata,
+		DueDate:  &latestCheckOut,
+		Metadata: b.Metadata,
 	}
 
 	// Retry on invoice-number collision: two bookings confirmed near-simultaneously
@@ -144,7 +145,7 @@ func isDuplicateInvoiceNumber(err error) bool {
 // touches draft invoices — issued/paid/etc. are left as-is. Called when the final
 // guest on a booking checks out, so the invoice reflects the real stay. No-op if
 // there's no invoice or it isn't a draft.
-func (s *InvoiceService) RegenerateRoomInvoice(bookingID, orgID uuid.UUID) error {
+func (s *InvoiceService) RegenerateRoomInvoice(ctx context.Context, bookingID, orgID uuid.UUID) error {
 	lineItems, _, latestCheckOut, err := s.roomLineItems(bookingID)
 	if err != nil {
 		return err
@@ -272,7 +273,7 @@ func (s *InvoiceService) mealLineItems(bookingID, orgID uuid.UUID) ([]models.Inv
 	return lineItems, subtotal, time.Now(), nil
 }
 
-func (s *InvoiceService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+func (s *InvoiceService) GetByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
 	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found")
@@ -280,7 +281,7 @@ func (s *InvoiceService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Invoice
 	return inv, nil
 }
 
-func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
+func (s *InvoiceService) GetByBookingID(ctx context.Context, bookingID uuid.UUID, orgID uuid.UUID) (*models.Invoice, error) {
 	inv, err := s.repo.GetByBookingID(bookingID, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found for this booking")
@@ -291,7 +292,7 @@ func (s *InvoiceService) GetByBookingID(bookingID uuid.UUID, orgID uuid.UUID) (*
 // PostBookingCharge appends a general line item to a booking's invoice and returns
 // the updated invoice. The generic primitive behind /bookings/{id}/charges — used
 // by resident meal collection and any future manual-charge flow.
-func (s *InvoiceService) PostBookingCharge(bookingID, orgID uuid.UUID, req *models.PostBookingChargeRequest) (*models.Invoice, error) {
+func (s *InvoiceService) PostBookingCharge(ctx context.Context, bookingID, orgID uuid.UUID, req *models.PostBookingChargeRequest) (*models.Invoice, error) {
 	if req.Amount < 0 {
 		return nil, errors.New("amount must be >= 0")
 	}
@@ -324,13 +325,13 @@ func (s *InvoiceService) PostBookingCharge(bookingID, orgID uuid.UUID, req *mode
 	return s.repo.GetByID(inv.ID, orgID)
 }
 
-func (s *InvoiceService) List(orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, page, pageSize int) ([]models.Invoice, int, error) {
+func (s *InvoiceService) List(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, status, clientType string, page, pageSize int) ([]models.Invoice, int, error) {
 	return s.repo.List(orgID, branchID, status, clientType, page, pageSize)
 }
 
 // SendInvoiceEmail emails the invoice (as a PDF attachment) to the client's
 // billing address. The PDF is rendered by the frontend and passed in as bytes.
-func (s *InvoiceService) SendInvoiceEmail(id, orgID uuid.UUID, pdf []byte) error {
+func (s *InvoiceService) SendInvoiceEmail(ctx context.Context, id, orgID uuid.UUID, pdf []byte) error {
 	if s.emailService == nil {
 		return errors.New("email service is not configured")
 	}
@@ -402,7 +403,7 @@ func (s *InvoiceService) SendInvoiceEmail(id, orgID uuid.UUID, pdf []byte) error
 
 // SendPaymentConfirmationEmail emails the client a plain payment-received
 // confirmation (no PDF attachment) after an invoice is marked as paid.
-func (s *InvoiceService) SendPaymentConfirmationEmail(id, orgID uuid.UUID) error {
+func (s *InvoiceService) SendPaymentConfirmationEmail(ctx context.Context, id, orgID uuid.UUID) error {
 	if s.emailService == nil {
 		return errors.New("email service is not configured")
 	}
@@ -446,13 +447,13 @@ func (s *InvoiceService) SendPaymentConfirmationEmail(id, orgID uuid.UUID) error
 	return s.emailService.SendEmail([]string{recipient}, subject, htmlBody)
 }
 
-func (s *InvoiceService) UpdateDueDate(bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {
+func (s *InvoiceService) UpdateDueDate(ctx context.Context, bookingID uuid.UUID, orgID uuid.UUID, dueDate time.Time) error {
 	return s.repo.UpdateDueDate(bookingID, orgID, dueDate)
 }
 
 // RecalculateRoomCharge regenerates the invoice for a booking based on current assignments.
-func (s *InvoiceService) RecalculateRoomCharge(bookingID uuid.UUID, orgID uuid.UUID) error {
-	return s.GenerateForBooking(bookingID, orgID)
+func (s *InvoiceService) RecalculateRoomCharge(ctx context.Context, bookingID uuid.UUID, orgID uuid.UUID) error {
+	return s.GenerateForBooking(ctx, bookingID, orgID)
 }
 
 // assertCancellable enforces that an invoice may only be cancelled if the
@@ -492,7 +493,7 @@ func (s *InvoiceService) assertCancellable(inv *models.Invoice, orgID uuid.UUID)
 	return nil
 }
 
-func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
+func (s *InvoiceService) UpdateStatus(ctx context.Context, id uuid.UUID, orgID uuid.UUID, req *models.UpdateInvoiceStatusRequest) (*models.Invoice, error) {
 	inv, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("invoice not found")
@@ -534,7 +535,7 @@ func (s *InvoiceService) UpdateStatus(id uuid.UUID, orgID uuid.UUID, req *models
 // invoice cancellation itself has already been committed.
 func (s *InvoiceService) cascadeCancel(inv *models.Invoice, orgID uuid.UUID) {
 	if inv.BookingID != nil && s.bookingSvc != nil {
-		if err := s.bookingSvc.Cancel(*inv.BookingID, orgID); err != nil {
+		if err := s.bookingSvc.Cancel(context.Background(), *inv.BookingID, orgID); err != nil {
 			log.Printf("invoice %s cancelled but failed to cancel booking %s: %v", inv.ID, *inv.BookingID, err)
 		}
 	}

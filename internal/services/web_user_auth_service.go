@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -27,7 +28,7 @@ func (s *WebUserAuthService) SetEmailService(svc *email.EmailService) {
 	s.emailService = svc
 }
 
-func (s *WebUserAuthService) Register(req *models.WebUserRegisterRequest) (*models.WebUser, error) {
+func (s *WebUserAuthService) Register(ctx context.Context, req *models.WebUserRegisterRequest) (*models.WebUser, error) {
 	if req.FullName == "" || req.Email == "" || req.Password == "" {
 		return nil, errors.New("full_name, email, and password are required")
 	}
@@ -66,7 +67,7 @@ func (s *WebUserAuthService) Register(req *models.WebUserRegisterRequest) (*mode
 	return u, nil
 }
 
-func (s *WebUserAuthService) Login(req *models.WebUserLoginRequest) (*models.WebUser, string, error) {
+func (s *WebUserAuthService) Login(ctx context.Context, req *models.WebUserLoginRequest) (*models.WebUser, string, error) {
 	if req.Email == "" || req.Password == "" {
 		return nil, "", errors.New("email and password are required")
 	}
@@ -90,8 +91,8 @@ func (s *WebUserAuthService) Login(req *models.WebUserLoginRequest) (*models.Web
 	if err := utils.ComparePasswords(hashed, req.Password); err != nil {
 		_ = s.repo.RecordFailedLogin(u.ID)
 		u, _, _ = s.repo.GetByEmail(req.Email)
-		if s.policy.ShouldLockAccount(u.FailedLoginAttempts) {
-			until := s.policy.CalculateLockoutTime()
+		if s.policy.ShouldLockAccount(ctx, u.FailedLoginAttempts) {
+			until := s.policy.CalculateLockoutTime(ctx)
 			_ = s.repo.SetLocked(u.ID, &until)
 			return nil, "", errors.New("account locked due to too many failed attempts")
 		}
@@ -108,18 +109,18 @@ func (s *WebUserAuthService) Login(req *models.WebUserLoginRequest) (*models.Web
 	return u, token, nil
 }
 
-func (s *WebUserAuthService) GetByID(id uuid.UUID) (*models.WebUser, error) {
+func (s *WebUserAuthService) GetByID(ctx context.Context, id uuid.UUID) (*models.WebUser, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *WebUserAuthService) Update(id uuid.UUID, req *models.WebUserUpdateRequest) (*models.WebUser, error) {
+func (s *WebUserAuthService) Update(ctx context.Context, id uuid.UUID, req *models.WebUserUpdateRequest) (*models.WebUser, error) {
 	if err := s.repo.Update(id, req); err != nil {
 		return nil, err
 	}
 	return s.repo.GetByID(id)
 }
 
-func (s *WebUserAuthService) ChangePassword(id uuid.UUID, oldPassword, newPassword string) error {
+func (s *WebUserAuthService) ChangePassword(ctx context.Context, id uuid.UUID, oldPassword, newPassword string) error {
 	u, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")

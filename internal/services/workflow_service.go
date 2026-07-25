@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -17,8 +18,8 @@ import (
 // endpoints use — without WorkflowService importing those services (which would be
 // a circular import, since they already depend on WorkflowService for InitiateWorkflow).
 type BookingRequestApprover interface {
-	ApproveFromWorkflow(id, orgID uuid.UUID) error
-	RejectFromWorkflow(id, orgID uuid.UUID) error
+	ApproveFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error
+	RejectFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error
 }
 
 type WorkflowService struct {
@@ -68,7 +69,7 @@ func (s *WorkflowService) RegisterApprover(taskType string, approver BookingRequ
 
 // InitiateWorkflow starts a new workflow instance using workflow type.
 // orgID scopes the workflow template lookup and stamps the instance.
-func (s *WorkflowService) InitiateWorkflow(
+func (s *WorkflowService) InitiateWorkflow(ctx context.Context,
 	workflowType models.WorkflowType,
 	taskDetails models.TaskDetails,
 	initiatorID string,
@@ -154,7 +155,7 @@ func (s *WorkflowService) InitiateWorkflow(
 // action must be "approve" or "reject" — semantic intents, not DB action_name values.
 // approve → advance along the first valid outbound transition from the current step.
 // reject  → terminate the instance immediately regardless of step configuration.
-func (s *WorkflowService) ProcessAction(
+func (s *WorkflowService) ProcessAction(ctx context.Context,
 	instanceID string,
 	action string,
 	performedByID string,
@@ -347,13 +348,13 @@ func (s *WorkflowService) applyOutcomeToRequest(instance *models.WorkflowInstanc
 	}
 
 	if approved {
-		if err := approver.ApproveFromWorkflow(requestID, orgID); err != nil {
+		if err := approver.ApproveFromWorkflow(context.Background(), requestID, orgID); err != nil {
 			return err
 		}
 		go s.notifyGuestBookingOutcome(instance.OrgID, td, models.BookingStatusConfirmed)
 		return nil
 	}
-	if err := approver.RejectFromWorkflow(requestID, orgID); err != nil {
+	if err := approver.RejectFromWorkflow(context.Background(), requestID, orgID); err != nil {
 		return err
 	}
 	go s.notifyGuestBookingOutcome(instance.OrgID, td, models.BookingStatusCancelled)
@@ -361,22 +362,22 @@ func (s *WorkflowService) applyOutcomeToRequest(instance *models.WorkflowInstanc
 }
 
 // GetAllOrgTasks retrieves all tasks in an org regardless of assignee, paginated.
-func (s *WorkflowService) GetAllOrgTasks(orgID, branchID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
+func (s *WorkflowService) GetAllOrgTasks(ctx context.Context, orgID, branchID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
 	return s.taskRepo.GetAllByOrg(orgID, branchID, statusFilter, pageSize, (page-1)*pageSize)
 }
 
 // GetMyTasks retrieves the tasks assigned to a user, scoped to org and paginated.
-func (s *WorkflowService) GetMyTasks(orgID, userID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
+func (s *WorkflowService) GetMyTasks(ctx context.Context, orgID, userID, statusFilter string, page, pageSize int) ([]models.AssignedTask, int, error) {
 	return s.taskRepo.GetByAssignee(orgID, userID, statusFilter, pageSize, (page-1)*pageSize)
 }
 
 // GetTaskByID retrieves a single task by ID, scoped to org (any assignee).
-func (s *WorkflowService) GetTaskByID(taskID, orgID string) (*models.AssignedTask, error) {
+func (s *WorkflowService) GetTaskByID(ctx context.Context, taskID, orgID string) (*models.AssignedTask, error) {
 	return s.taskRepo.GetByID(taskID, orgID)
 }
 
 // GetInstanceHistory retrieves the complete history of a workflow instance, scoped to org.
-func (s *WorkflowService) GetInstanceHistory(instanceID, orgID string) ([]models.WorkflowHistory, error) {
+func (s *WorkflowService) GetInstanceHistory(ctx context.Context, instanceID, orgID string) ([]models.WorkflowHistory, error) {
 	if _, err := s.instanceRepo.GetByID(instanceID, orgID); err != nil {
 		return nil, fmt.Errorf("instance not found: %w", err)
 	}
@@ -384,7 +385,7 @@ func (s *WorkflowService) GetInstanceHistory(instanceID, orgID string) ([]models
 }
 
 // GetInstanceByTaskID retrieves a workflow instance by the associated task ID, scoped to org.
-func (s *WorkflowService) GetInstanceByTaskID(taskID, orgID string) (*models.WorkflowInstance, error) {
+func (s *WorkflowService) GetInstanceByTaskID(ctx context.Context, taskID, orgID string) (*models.WorkflowInstance, error) {
 	return s.instanceRepo.GetByTaskID(taskID, orgID)
 }
 
@@ -392,7 +393,7 @@ func (s *WorkflowService) GetInstanceByTaskID(taskID, orgID string) (*models.Wor
 // request ID. It is a best-effort operation — if no instance is found (e.g. the
 // org has no workflow configured) the error is silently swallowed so the request
 // cancellation still succeeds.
-func (s *WorkflowService) CancelInstance(taskID, orgID string) error {
+func (s *WorkflowService) CancelInstance(ctx context.Context, taskID, orgID string) error {
 	instance, err := s.instanceRepo.GetByTaskID(taskID, orgID)
 	if err != nil {
 		return nil // no instance found — nothing to cancel

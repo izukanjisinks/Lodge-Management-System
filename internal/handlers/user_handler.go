@@ -1,25 +1,24 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type UserHandler struct {
-	service     *services.UserService
-	roleService *services.RoleService
+	service     interfaces.UserInterface
+	roleService interfaces.RoleInterface
 }
 
-func NewUserHandler(service *services.UserService, roleService *services.RoleService) *UserHandler {
+func NewUserHandler(service interfaces.UserInterface, roleService interfaces.RoleInterface) *UserHandler {
 	return &UserHandler{service: service, roleService: roleService}
 }
-
 
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -58,7 +57,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		BranchID: branchID,
 	}
 
-	if err := h.service.Register(user); err != nil {
+	if err := h.service.Register(r.Context(), user); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -89,7 +88,7 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	users, total, err := h.service.ListUsers(orgID, branchID, search, roleID, isActive, pag.Page, pag.PageSize)
+	users, total, err := h.service.ListUsers(r.Context(), orgID, branchID, search, roleID, isActive, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve users")
 		return
@@ -115,7 +114,7 @@ func (h *UserHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.GetUserByID(id)
+	user, err := h.service.GetUserByID(r.Context(), id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "User not found")
 		return
@@ -153,7 +152,7 @@ func (h *UserHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	callerID, _ := middleware.GetUserIDFromContext(r.Context())
-	user, err := h.service.UpdateUserFull(id, callerID, req.FullName, req.Email, req.Password, req.Role, req.Status, req.BranchID)
+	user, err := h.service.UpdateUserFull(r.Context(), id, callerID, req.FullName, req.Email, req.Password, req.Role, req.Status, req.BranchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -192,7 +191,7 @@ func (h *UserHandler) ChangeRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.ChangeUserRole(id, roleID)
+	user, err := h.service.ChangeUserRole(r.Context(), id, roleID)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -209,7 +208,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	if err := h.service.DeleteUser(id, orgID); err != nil {
+	if err := h.service.DeleteUser(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -224,7 +223,7 @@ func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.LockUser(id); err != nil {
+	if err := h.service.LockUser(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -234,7 +233,7 @@ func (h *UserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 
 func (h *UserHandler) ListRoles(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	roles, err := h.roleService.GetAllRoles(orgID)
+	roles, err := h.roleService.GetAllRoles(r.Context(), orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve roles")
 		return
@@ -261,11 +260,10 @@ func (h *UserHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UnlockUser(id); err != nil {
+	if err := h.service.UnlockUser(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
 	utils.RespondJSON(w, http.StatusOK, map[string]string{"message": "User account unlocked successfully"})
 }
-

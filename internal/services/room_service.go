@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -18,7 +19,7 @@ func NewRoomService(repo *repository.RoomRepository) *RoomService {
 	return &RoomService{repo: repo}
 }
 
-func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
+func (s *RoomService) Create(ctx context.Context, room *models.Room, orgID uuid.UUID) error {
 	if room.Name == "" {
 		return errors.New("room name is required")
 	}
@@ -44,33 +45,33 @@ func (s *RoomService) Create(room *models.Room, orgID uuid.UUID) error {
 	return s.repo.Create(room, orgID)
 }
 
-func (s *RoomService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
+func (s *RoomService) GetByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.Room, error) {
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *RoomService) GetByIDUnscoped(id uuid.UUID) (*models.Room, error) {
+func (s *RoomService) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*models.Room, error) {
 	return s.repo.GetByIDUnscoped(id)
 }
 
-func (s *RoomService) GuestList(orgID *uuid.UUID, branchID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (s *RoomService) GuestList(ctx context.Context, orgID *uuid.UUID, branchID *uuid.UUID, roomType, orgName string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, 0, errors.New("invalid room type filter")
 	}
 	return s.repo.GuestList(orgID, branchID, roomType, orgName, isAvailable, page, pageSize)
 }
 
-func (s *RoomService) List(orgID uuid.UUID, branchID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
+func (s *RoomService) List(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, roomType string, isAvailable *bool, page, pageSize int) ([]models.Room, int, error) {
 	if roomType != "" && !models.ValidRoomTypes[roomType] {
 		return nil, 0, errors.New("invalid room type filter")
 	}
 	return s.repo.List(orgID, branchID, roomType, isAvailable, page, pageSize)
 }
 
-func (s *RoomService) ListRoomStatus(orgID uuid.UUID, branchID *uuid.UUID) ([]models.RoomStatus, error) {
+func (s *RoomService) ListRoomStatus(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID) ([]models.RoomStatus, error) {
 	return s.repo.ListRoomStatus(orgID, branchID)
 }
 
-func (s *RoomService) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
+func (s *RoomService) ListAvailable(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, checkIn, checkOut time.Time, roomType string) ([]models.Room, error) {
 	if checkIn.IsZero() || checkOut.IsZero() {
 		return nil, errors.New("check_in and check_out are required")
 	}
@@ -83,7 +84,7 @@ func (s *RoomService) ListAvailable(orgID uuid.UUID, branchID *uuid.UUID, checkI
 	return s.repo.ListAvailable(orgID, branchID, checkIn, checkOut, roomType)
 }
 
-func (s *RoomService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Room) (*models.Room, error) {
+func (s *RoomService) Update(ctx context.Context, id uuid.UUID, orgID uuid.UUID, updates *models.Room) (*models.Room, error) {
 	room, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("room not found")
@@ -116,7 +117,7 @@ func (s *RoomService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Room
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *RoomService) UpdateImages(id uuid.UUID, orgID uuid.UUID, images []string) (*models.Room, error) {
+func (s *RoomService) UpdateImages(ctx context.Context, id uuid.UUID, orgID uuid.UUID, images []string) (*models.Room, error) {
 	_, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("room not found")
@@ -130,7 +131,7 @@ func (s *RoomService) UpdateImages(id uuid.UUID, orgID uuid.UUID, images []strin
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *RoomService) SetAvailability(id uuid.UUID, orgID uuid.UUID, available bool) error {
+func (s *RoomService) SetAvailability(ctx context.Context, id uuid.UUID, orgID uuid.UUID, available bool) error {
 	_, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("room not found")
@@ -138,6 +139,6 @@ func (s *RoomService) SetAvailability(id uuid.UUID, orgID uuid.UUID, available b
 	return s.repo.SetAvailability(id, orgID, available)
 }
 
-func (s *RoomService) Delete(id uuid.UUID, orgID uuid.UUID) error {
+func (s *RoomService) Delete(ctx context.Context, id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.Delete(id, orgID)
 }

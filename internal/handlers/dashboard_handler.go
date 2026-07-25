@@ -1,18 +1,18 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
 
 type DashboardHandler struct {
-	service *services.DashboardService
+	service interfaces.DashboardInterface
 }
 
-func NewDashboardHandler(service *services.DashboardService) *DashboardHandler {
+func NewDashboardHandler(service interfaces.DashboardInterface) *DashboardHandler {
 	return &DashboardHandler{service: service}
 }
 
@@ -25,7 +25,7 @@ func (h *DashboardHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	summary, err := h.service.GetSummary(orgID, branchID)
+	summary, err := h.service.GetSummary(r.Context(), orgID, branchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load dashboard summary")
 		return
@@ -41,7 +41,7 @@ func (h *DashboardHandler) Bookings(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	data, err := h.service.GetBookings(orgID, branchID)
+	data, err := h.service.GetBookings(r.Context(), orgID, branchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load bookings dashboard")
 		return
@@ -57,7 +57,7 @@ func (h *DashboardHandler) Orders(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	data, err := h.service.GetOrders(orgID, branchID)
+	data, err := h.service.GetOrders(r.Context(), orgID, branchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load orders dashboard")
 		return
@@ -73,7 +73,7 @@ func (h *DashboardHandler) Invoices(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	data, err := h.service.GetInvoices(orgID, branchID)
+	data, err := h.service.GetInvoices(r.Context(), orgID, branchID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load invoices dashboard")
 		return

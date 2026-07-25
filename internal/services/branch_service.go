@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"strings"
 
@@ -18,7 +19,7 @@ func NewBranchService(repo *repository.BranchRepository) *BranchService {
 	return &BranchService{repo: repo}
 }
 
-func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest) (*models.Branch, error) {
+func (s *BranchService) Create(ctx context.Context, orgID uuid.UUID, req *models.CreateBranchRequest) (*models.Branch, error) {
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errors.New("branch name is required")
 	}
@@ -67,7 +68,7 @@ func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest)
 	return b, nil
 }
 
-func (s *BranchService) GetByID(id, orgID uuid.UUID) (*models.Branch, error) {
+func (s *BranchService) GetByID(ctx context.Context, id, orgID uuid.UUID) (*models.Branch, error) {
 	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("branch not found")
@@ -75,11 +76,11 @@ func (s *BranchService) GetByID(id, orgID uuid.UUID) (*models.Branch, error) {
 	return b, nil
 }
 
-func (s *BranchService) List(orgID uuid.UUID) ([]models.Branch, error) {
+func (s *BranchService) List(ctx context.Context, orgID uuid.UUID) ([]models.Branch, error) {
 	return s.repo.List(orgID)
 }
 
-func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequest) (*models.Branch, error) {
+func (s *BranchService) Update(ctx context.Context, id, orgID uuid.UUID, req *models.UpdateBranchRequest) (*models.Branch, error) {
 	b, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("branch not found")
@@ -144,6 +145,6 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 	return b, nil
 }
 
-func (s *BranchService) Delete(id, orgID uuid.UUID) error {
+func (s *BranchService) Delete(ctx context.Context, id, orgID uuid.UUID) error {
 	return s.repo.Delete(id, orgID)
 }

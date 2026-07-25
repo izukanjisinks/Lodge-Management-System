@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,7 +87,7 @@ func (s *CorporateBookingRequestService) venueBranchID(orgID, venueID uuid.UUID)
 
 // ─── Submission ───────────────────────────────────────────────────────────────
 
-func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) SubmitAccommodation(ctx context.Context, orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitAccommodationRequest) (*models.Booking, error) {
 	// Validate required fields
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
@@ -136,7 +137,7 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, _, corProfileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, corProfileID, err := s.corProfile.ResolveChain(ctx, orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +151,7 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 		webUserIDPtr = &webUserID
 	}
 
-	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.booking.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:        orgID,
 		BranchID:     req.BranchID, // lodge branch from URL, not cor_branch_details ID
 		WebUserID:    webUserIDPtr,
@@ -174,7 +175,7 @@ func (s *CorporateBookingRequestService) SubmitAccommodation(orgID uuid.UUID, we
 // eventBooking.js for corporate bookers. It maps the nested company/approver/
 // booked_by into the ResolveChain inputs, stores the whole envelope as JSONB, and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) SubmitEventBooking(ctx context.Context, orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -217,7 +218,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, _, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, profileID, err := s.corProfile.ResolveChain(ctx, orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +230,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 		webUserIDPtr = &webUserID
 	}
 
-	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.booking.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:        orgID,
 		BranchID:     req.BranchID,
 		WebUserID:    webUserIDPtr,
@@ -252,7 +253,7 @@ func (s *CorporateBookingRequestService) SubmitEventBooking(orgID uuid.UUID, web
 // SubmitMealBooking handles the standalone meal envelope (Flow B) from
 // mealBooking.js for corporate bookers. Stores the whole envelope as JSONB and
 // starts the approval workflow.
-func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) SubmitMealBooking(ctx context.Context, orgID uuid.UUID, webUserID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Email == "" || req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name and email are required")
 	}
@@ -283,7 +284,7 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 		Department: req.Company.DepartmentName,
 	}
 
-	companyID, _, profileID, err := s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, profileID, err := s.corProfile.ResolveChain(ctx, orgID, company, branch, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -295,7 +296,7 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 		webUserIDPtr = &webUserID
 	}
 
-	booking, err := s.booking.SubmitPending(&models.PendingBookingInput{
+	booking, err := s.booking.SubmitPending(ctx, &models.PendingBookingInput{
 		OrgID:        orgID,
 		BranchID:     req.BranchID,
 		WebUserID:    webUserIDPtr,
@@ -318,7 +319,7 @@ func (s *CorporateBookingRequestService) SubmitMealBooking(orgID uuid.UUID, webU
 // resolveCorporateChain get-or-creates the company → branch → profile chain from a
 // booked_by + company block, returning the resolved company and profile IDs. Shared
 // by the website submit and the staff walk-in paths.
-func (s *CorporateBookingRequestService) resolveCorporateChain(orgID uuid.UUID, comp *models.CorSubmitCompany, bookedBy models.CorSubmitBookedBy) (companyID, profileID uuid.UUID, err error) {
+func (s *CorporateBookingRequestService) resolveCorporateChain(ctx context.Context, orgID uuid.UUID, comp *models.CorSubmitCompany, bookedBy models.CorSubmitBookedBy) (companyID, profileID uuid.UUID, err error) {
 	company := models.CorBookingCompanyInput{
 		CompanyName: comp.Name,
 		TPIN:        comp.TPIN,
@@ -338,14 +339,14 @@ func (s *CorporateBookingRequestService) resolveCorporateChain(orgID uuid.UUID, 
 		ManNumber:  bookedBy.ManNumber,
 		Department: comp.DepartmentName,
 	}
-	companyID, _, profileID, err = s.corProfile.ResolveChain(orgID, company, branch, profile)
+	companyID, _, profileID, err = s.corProfile.ResolveChain(ctx, orgID, company, branch, profile)
 	return companyID, profileID, err
 }
 
 // WalkInMeal creates a confirmed corporate meal booking directly (no pending state,
 // no approval workflow) — for a corporate client booking in person at the desk. It
 // resolves the company/profile chain then materialises via CreateCorporateMeal.
-func (s *CorporateBookingRequestService) WalkInMeal(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) WalkInMeal(ctx context.Context, orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -355,17 +356,17 @@ func (s *CorporateBookingRequestService) WalkInMeal(orgID uuid.UUID, req *models
 	if req.Meal == nil || len(req.Meal.Sessions) == 0 {
 		return nil, errors.New("at least one meal session is required")
 	}
-	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	companyID, profileID, err := s.resolveCorporateChain(ctx, orgID, req.Company, req.BookedBy)
 	if err != nil {
 		return nil, err
 	}
-	return s.booking.CreateCorporateMeal(orgID, &profileID, &companyID, nil, nil, req)
+	return s.booking.CreateCorporateMeal(ctx, orgID, &profileID, &companyID, nil, nil, req)
 }
 
 // WalkInEvent creates a confirmed corporate event booking directly (no pending state,
 // no approval workflow). Resolves the company/profile chain then materialises via
 // CreateCorporateEvent.
-func (s *CorporateBookingRequestService) WalkInEvent(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) WalkInEvent(ctx context.Context, orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -375,18 +376,18 @@ func (s *CorporateBookingRequestService) WalkInEvent(orgID uuid.UUID, req *model
 	if req.Event == nil || len(req.Event.Sessions) == 0 {
 		return nil, errors.New("at least one event session is required")
 	}
-	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	companyID, profileID, err := s.resolveCorporateChain(ctx, orgID, req.Company, req.BookedBy)
 	if err != nil {
 		return nil, err
 	}
-	return s.booking.CreateCorporateEvent(orgID, &profileID, &companyID, nil, nil, req)
+	return s.booking.CreateCorporateEvent(ctx, orgID, &profileID, &companyID, nil, nil, req)
 }
 
 // WalkInAccommodation creates a confirmed corporate accommodation booking directly
 // (no pending state, no approval). Resolves the company/profile chain, then
 // materialises the booking + per-attendant room assignments. matReq carries one
 // assignment (guest_index → room_id) per attendant in the envelope.
-func (s *CorporateBookingRequestService) WalkInAccommodation(orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+func (s *CorporateBookingRequestService) WalkInAccommodation(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
 	if req.BookedBy.Name == "" {
 		return nil, errors.New("booked_by name is required")
 	}
@@ -399,11 +400,11 @@ func (s *CorporateBookingRequestService) WalkInAccommodation(orgID uuid.UUID, br
 	if matReq == nil || len(matReq.Assignments) == 0 {
 		return nil, errors.New("room assignments are required")
 	}
-	companyID, profileID, err := s.resolveCorporateChain(orgID, req.Company, req.BookedBy)
+	companyID, profileID, err := s.resolveCorporateChain(ctx, orgID, req.Company, req.BookedBy)
 	if err != nil {
 		return nil, err
 	}
-	return s.booking.CreateCorporateAccommodation(orgID, branchID, &profileID, &companyID, req, matReq)
+	return s.booking.CreateCorporateAccommodation(ctx, orgID, branchID, &profileID, &companyID, req, matReq)
 }
 
 // ─── Backoffice ───────────────────────────────────────────────────────────────
@@ -411,11 +412,11 @@ func (s *CorporateBookingRequestService) WalkInAccommodation(orgID uuid.UUID, br
 // GetByID returns a pending corporate booking shaped as a CorporateBookingRequest so
 // the existing back-office task screen (which reads .payload/.booking_type) keeps
 // working. Single-phase: the id is a booking ID and the payload comes from metadata.
-func (s *CorporateBookingRequestService) GetByID(id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
+func (s *CorporateBookingRequestService) GetByID(ctx context.Context, id, orgID uuid.UUID) (*models.CorporateBookingRequest, error) {
 	if s.booking == nil {
 		return nil, errors.New("booking service not configured")
 	}
-	b, err := s.booking.GetForApproval(id, orgID)
+	b, err := s.booking.GetForApproval(ctx, id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -533,12 +534,12 @@ func (s *CorporateBookingRequestService) buildMealsSummary(orgID uuid.UUID, payl
 
 // List returns pending corporate bookings shaped as requests for the back-office
 // "booking requests" screen. Single-phase: pending bookings ARE the requests.
-func (s *CorporateBookingRequestService) List(orgID uuid.UUID, bookingType, status string, page, pageSize int) ([]models.CorporateBookingRequest, int, error) {
+func (s *CorporateBookingRequestService) List(ctx context.Context, orgID uuid.UUID, bookingType, status string, page, pageSize int) ([]models.CorporateBookingRequest, int, error) {
 	if s.booking == nil {
 		return nil, 0, errors.New("booking service not configured")
 	}
 	// A request screen shows things awaiting action → pending bookings.
-	bookings, total, err := s.booking.List(orgID, models.BookerTypeCorporate, bookingType, models.BookingStatusPending, nil, nil, page, pageSize)
+	bookings, total, err := s.booking.List(ctx, orgID, models.BookerTypeCorporate, bookingType, models.BookingStatusPending, nil, nil, page, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -552,23 +553,23 @@ func (s *CorporateBookingRequestService) List(orgID uuid.UUID, bookingType, stat
 // ApproveFromWorkflow / RejectFromWorkflow satisfy the workflow's
 // BookingRequestApprover interface, delegating to the same Approve/Reject the
 // request endpoints use.
-func (s *CorporateBookingRequestService) ApproveFromWorkflow(id, orgID uuid.UUID) error {
-	return s.Approve(id, orgID)
+func (s *CorporateBookingRequestService) ApproveFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error {
+	return s.Approve(ctx, id, orgID)
 }
 
-func (s *CorporateBookingRequestService) RejectFromWorkflow(id, orgID uuid.UUID) error {
-	return s.Reject(id, orgID)
+func (s *CorporateBookingRequestService) RejectFromWorkflow(ctx context.Context, id, orgID uuid.UUID) error {
+	return s.Reject(ctx, id, orgID)
 }
 
 // Approve promotes a pending corporate booking (id is the booking ID). Event and
 // meals bookings are self-contained (venue/menu chosen at submission) and promote in
 // place to confirmed immediately. Accommodation needs staff to assign rooms, so it
 // stays pending here — the materialise endpoint promotes it once rooms are assigned.
-func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
+func (s *CorporateBookingRequestService) Approve(ctx context.Context, id, orgID uuid.UUID) error {
 	if s.booking == nil {
 		return errors.New("booking service not configured")
 	}
-	b, err := s.booking.GetForApproval(id, orgID)
+	b, err := s.booking.GetForApproval(ctx, id, orgID)
 	if err != nil {
 		return errors.New("booking not found")
 	}
@@ -594,18 +595,18 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 			_ = json.Unmarshal(b.Metadata, &legacy)
 			lodgeBranchID = s.venueBranchID(orgID, legacy.VenueID)
 		}
-		if _, err := s.booking.CreateFromBooking(orgID, lodgeBranchID, id, nil); err != nil {
+		if _, err := s.booking.CreateFromBooking(ctx, orgID, lodgeBranchID, id, nil); err != nil {
 			return fmt.Errorf("approved but booking promotion failed: %w", err)
 		}
 
 	case models.CorporateBookingTypeMeals:
 		var envelope models.SubmitMealBookingRequest
 		if json.Unmarshal(b.Metadata, &envelope) == nil && envelope.Meal != nil && len(envelope.Meal.Sessions) > 0 {
-			if _, err := s.booking.CreateCorporateMeal(orgID, b.CorProfileID, b.CompanyID, b.WebUserID, &id, &envelope); err != nil {
+			if _, err := s.booking.CreateCorporateMeal(ctx, orgID, b.CorProfileID, b.CompanyID, b.WebUserID, &id, &envelope); err != nil {
 				return fmt.Errorf("approved but meals promotion failed: %w", err)
 			}
 		} else {
-			if _, err := s.booking.CreateFromBooking(orgID, nil, id, nil); err != nil {
+			if _, err := s.booking.CreateFromBooking(ctx, orgID, nil, id, nil); err != nil {
 				return fmt.Errorf("approved but booking promotion failed: %w", err)
 			}
 		}
@@ -618,19 +619,19 @@ func (s *CorporateBookingRequestService) Approve(id, orgID uuid.UUID) error {
 }
 
 // Reject marks a pending corporate booking as rejected.
-func (s *CorporateBookingRequestService) Reject(id, orgID uuid.UUID) error {
+func (s *CorporateBookingRequestService) Reject(ctx context.Context, id, orgID uuid.UUID) error {
 	if s.booking == nil {
 		return errors.New("booking service not configured")
 	}
-	return s.booking.SetStatus(id, orgID, models.BookingStatusRejected, models.BookingStatusPending)
+	return s.booking.SetStatus(ctx, id, orgID, models.BookingStatusRejected, models.BookingStatusPending)
 }
 
 // Cancel marks a pending corporate booking as cancelled.
-func (s *CorporateBookingRequestService) Cancel(id, orgID uuid.UUID) error {
+func (s *CorporateBookingRequestService) Cancel(ctx context.Context, id, orgID uuid.UUID) error {
 	if s.booking == nil {
 		return errors.New("booking service not configured")
 	}
-	return s.booking.SetStatus(id, orgID, models.BookingStatusCancelled, models.BookingStatusPending)
+	return s.booking.SetStatus(ctx, id, orgID, models.BookingStatusCancelled, models.BookingStatusPending)
 }
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
@@ -658,7 +659,7 @@ func (s *CorporateBookingRequestService) startWorflow(b *models.Booking, company
 		if b.BranchID != nil {
 			taskDetails.BranchID = b.BranchID.String()
 		}
-		if _, err := s.workflow.InitiateWorkflow(
+		if _, err := s.workflow.InitiateWorkflow(context.Background(),
 			models.WorkflowTypeBookingApproval,
 			taskDetails,
 			b.ID.String(),

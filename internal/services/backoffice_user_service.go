@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,15 +26,15 @@ func (s *BackofficeUserService) SetEmailService(svc *email.EmailService) {
 	s.emailService = svc
 }
 
-func (s *BackofficeUserService) List() ([]models.BackofficeUser, error) {
+func (s *BackofficeUserService) List(ctx context.Context) ([]models.BackofficeUser, error) {
 	return s.repo.List()
 }
 
-func (s *BackofficeUserService) GetByID(id uuid.UUID) (*models.BackofficeUser, error) {
+func (s *BackofficeUserService) GetByID(ctx context.Context, id uuid.UUID) (*models.BackofficeUser, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *BackofficeUserService) Create(req models.CreateBackofficeUserRequest) (*models.BackofficeUser, error) {
+func (s *BackofficeUserService) Create(ctx context.Context, req models.CreateBackofficeUserRequest) (*models.BackofficeUser, error) {
 	if req.FullName == "" || req.Email == "" {
 		return nil, errors.New("full_name and email are required")
 	}
@@ -80,7 +81,7 @@ func (s *BackofficeUserService) Create(req models.CreateBackofficeUserRequest) (
 	return u, nil
 }
 
-func (s *BackofficeUserService) Update(id uuid.UUID, req models.UpdateBackofficeUserRequest) (*models.BackofficeUser, error) {
+func (s *BackofficeUserService) Update(ctx context.Context, id uuid.UUID, req models.UpdateBackofficeUserRequest) (*models.BackofficeUser, error) {
 	u, err := s.repo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -97,11 +98,11 @@ func (s *BackofficeUserService) Update(id uuid.UUID, req models.UpdateBackoffice
 	return s.repo.GetByID(id)
 }
 
-func (s *BackofficeUserService) Delete(id uuid.UUID) error {
+func (s *BackofficeUserService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.repo.Delete(id)
 }
 
-func (s *BackofficeUserService) ResetPassword(id uuid.UUID) error {
+func (s *BackofficeUserService) ResetPassword(ctx context.Context, id uuid.UUID) error {
 	u, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -135,7 +136,7 @@ func (s *BackofficeUserService) ResetPassword(id uuid.UUID) error {
 	return nil
 }
 
-func (s *BackofficeUserService) Lock(id uuid.UUID) error {
+func (s *BackofficeUserService) Lock(ctx context.Context, id uuid.UUID) error {
 	u, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -144,7 +145,7 @@ func (s *BackofficeUserService) Lock(id uuid.UUID) error {
 	return s.repo.Update(u)
 }
 
-func (s *BackofficeUserService) Unlock(id uuid.UUID) error {
+func (s *BackofficeUserService) Unlock(ctx context.Context, id uuid.UUID) error {
 	u, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")

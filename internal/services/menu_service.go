@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 
@@ -20,7 +21,7 @@ func NewMenuService(repo *repository.MenuRepository) *MenuService {
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
-func (s *MenuService) GetMenu(orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+func (s *MenuService) GetMenu(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
 	menu, err := s.repo.GetMenu(orgID, branchID)
 	if err != nil {
 		return nil, errors.New("menu not found")
@@ -40,7 +41,7 @@ func (s *MenuService) GetMenu(orgID uuid.UUID, branchID *uuid.UUID, category str
 	return s.buildResponse(menu, orgID, category, page, pageSize)
 }
 
-func (s *MenuService) UpsertMenu(orgID uuid.UUID, branchID *uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
+func (s *MenuService) UpsertMenu(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.UpdateMenuRequest, category string, page, pageSize int) (*models.MenuResponse, error) {
 	menu, err := s.repo.UpsertMenu(orgID, branchID, req)
 	if err != nil {
 		return nil, err
@@ -66,7 +67,7 @@ func (s *MenuService) buildResponse(menu *models.Menu, orgID uuid.UUID, category
 
 // ── Menu Items ────────────────────────────────────────────────────────────────
 
-func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
+func (s *MenuService) CreateMenuItem(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateMenuItemRequest) (*models.MenuItem, error) {
 	if req.Name == "" {
 		return nil, errors.New("name is required")
 	}
@@ -97,7 +98,7 @@ func (s *MenuService) CreateMenuItem(orgID uuid.UUID, branchID *uuid.UUID, req *
 	return s.repo.GetMenuItemByID(item.ID, orgID)
 }
 
-func (s *MenuService) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models.MenuItem, error) {
+func (s *MenuService) GetMenuItemByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.MenuItem, error) {
 	item, err := s.repo.GetMenuItemByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("menu item not found")
@@ -105,7 +106,7 @@ func (s *MenuService) GetMenuItemByID(id uuid.UUID, orgID uuid.UUID) (*models.Me
 	return item, nil
 }
 
-func (s *MenuService) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *models.UpdateMenuItemRequest) (*models.MenuItem, error) {
+func (s *MenuService) UpdateMenuItem(ctx context.Context, id uuid.UUID, orgID uuid.UUID, req *models.UpdateMenuItemRequest) (*models.MenuItem, error) {
 	if req.Price != nil && *req.Price < 0 {
 		return nil, errors.New("price must be >= 0")
 	}
@@ -116,7 +117,7 @@ func (s *MenuService) UpdateMenuItem(id uuid.UUID, orgID uuid.UUID, req *models.
 	return item, nil
 }
 
-func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
+func (s *MenuService) DeleteMenuItem(ctx context.Context, id uuid.UUID, orgID uuid.UUID) error {
 	if err := s.repo.DeleteMenuItem(id, orgID); err != nil {
 		return errors.New("menu item not found")
 	}
@@ -125,7 +126,7 @@ func (s *MenuService) DeleteMenuItem(id uuid.UUID, orgID uuid.UUID) error {
 
 // ── Guest (public) ────────────────────────────────────────────────────────────
 
-func (s *MenuService) GuestGetMenu(orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
+func (s *MenuService) GuestGetMenu(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, category string, page, pageSize int) (*models.MenuResponse, error) {
 	menu, err := s.repo.GuestGetMenu(orgID, branchID)
 	if errors.Is(err, sql.ErrNoRows) {
 		// No menu configured for this lodge yet — return an empty menu rather

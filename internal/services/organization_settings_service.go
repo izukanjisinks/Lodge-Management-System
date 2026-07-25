@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 
@@ -15,10 +16,10 @@ func NewOrganizationSettingsService(repo *repository.OrganizationSettingsReposit
 	return &OrganizationSettingsService{repo: repo}
 }
 
-func (s *OrganizationSettingsService) Get(orgID uuid.UUID) (*models.OrganizationSettings, error) {
+func (s *OrganizationSettingsService) Get(ctx context.Context, orgID uuid.UUID) (*models.OrganizationSettings, error) {
 	return s.repo.GetForOrg(orgID)
 }
 
-func (s *OrganizationSettingsService) Upsert(orgID uuid.UUID, req *models.UpdateOrganizationSettingsRequest) (*models.OrganizationSettings, error) {
+func (s *OrganizationSettingsService) Upsert(ctx context.Context, orgID uuid.UUID, req *models.UpdateOrganizationSettingsRequest) (*models.OrganizationSettings, error) {
 	return s.repo.Upsert(orgID, req)
 }
