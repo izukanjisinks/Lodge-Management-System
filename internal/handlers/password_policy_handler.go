@@ -1,11 +1,11 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/internal/utils/password"
 	"lodge-system/pkg/utils"
 
@@ -13,11 +13,11 @@ import (
 )
 
 type PasswordPolicyHandler struct {
-	policyService *services.PasswordPolicyService
-	userService   *services.UserService
+	policyService interfaces.PasswordPolicyInterface
+	userService   interfaces.UserInterface
 }
 
-func NewPasswordPolicyHandler(policyService *services.PasswordPolicyService, userService *services.UserService) *PasswordPolicyHandler {
+func NewPasswordPolicyHandler(policyService interfaces.PasswordPolicyInterface, userService interfaces.UserInterface) *PasswordPolicyHandler {
 	return &PasswordPolicyHandler{
 		policyService: policyService,
 		userService:   userService,
@@ -27,7 +27,7 @@ func NewPasswordPolicyHandler(policyService *services.PasswordPolicyService, use
 // GetPasswordPolicy retrieves the org-specific policy, falling back to the global default.
 func (h *PasswordPolicyHandler) GetPasswordPolicy(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	policy := h.policyService.GetPolicy(orgID)
+	policy := h.policyService.GetPolicy(r.Context(), orgID)
 	if policy == nil {
 		utils.RespondError(w, http.StatusNotFound, "No password policy configured")
 		return
@@ -58,7 +58,7 @@ func (h *PasswordPolicyHandler) UpdatePasswordPolicy(w http.ResponseWriter, r *h
 	}
 
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	policy, err := h.policyService.UpsertPolicy(orgID, &req)
+	policy, err := h.policyService.UpsertPolicy(r.Context(), orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -89,7 +89,7 @@ func (h *PasswordPolicyHandler) ChangePassword(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.userService.ChangePassword(user.UserID, req.OldPassword, req.NewPassword); err != nil {
+	if err := h.userService.ChangePassword(r.Context(), user.UserID, req.OldPassword, req.NewPassword); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -102,7 +102,7 @@ func (h *PasswordPolicyHandler) ChangePassword(w http.ResponseWriter, r *http.Re
 // GeneratePassword generates a password based on the current password policy
 func (h *PasswordPolicyHandler) GeneratePassword(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	policy := h.policyService.GetPolicy(orgID)
+	policy := h.policyService.GetPolicy(r.Context(), orgID)
 	if policy == nil {
 		utils.RespondError(w, http.StatusNotFound, "No password policy configured")
 		return
@@ -159,7 +159,7 @@ func (h *PasswordPolicyHandler) ResetUserPassword(w http.ResponseWriter, r *http
 		return
 	}
 
-	if err := h.userService.ResetPassword(userID); err != nil {
+	if err := h.userService.ResetPassword(r.Context(), userID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

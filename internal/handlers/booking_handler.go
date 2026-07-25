@@ -1,25 +1,26 @@
 package handlers
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
+	"lodge-system/internal/interfaces"
 	"net/http"
 	"strconv"
 	"time"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type BookingHandler struct {
-	service *services.BookingService
+	service interfaces.BookingInterface
 }
 
-func NewBookingHandler(service *services.BookingService) *BookingHandler {
+func NewBookingHandler(service interfaces.BookingInterface) *BookingHandler {
 	return &BookingHandler{service: service}
 }
 
@@ -36,7 +37,7 @@ func (h *BookingHandler) CreateIndividual(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	booking, err := h.service.CreateIndividual(orgID, branchID, &req, nil)
+	booking, err := h.service.CreateIndividual(r.Context(), orgID, branchID, &req, nil)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -64,7 +65,7 @@ func (h *BookingHandler) CreateFromRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	booking, err := h.service.CreateFromBooking(orgID, branchID, bookingID, &matReq)
+	booking, err := h.service.CreateFromBooking(r.Context(), orgID, branchID, bookingID, &matReq)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -88,11 +89,11 @@ func (h *BookingHandler) List(w http.ResponseWriter, r *http.Request) {
 	from, to := parseDateRange(r)
 
 	if r.URL.Query().Get("format") == "csv" {
-		h.exportCSV(w, orgID, bookerType, bookingType, status, from, to)
+		h.exportCSV(r.Context(), w, orgID, bookerType, bookingType, status, from, to)
 		return
 	}
 
-	bookings, total, err := h.service.List(orgID, bookerType, bookingType, status, from, to, p.Page, p.PageSize)
+	bookings, total, err := h.service.List(r.Context(), orgID, bookerType, bookingType, status, from, to, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -115,7 +116,7 @@ func (h *BookingHandler) ListForWebUser(w http.ResponseWriter, r *http.Request) 
 	}
 	p := utils.ParsePagination(r)
 
-	bookings, total, err := h.service.ListForWebUser(webUserID, p.Page, p.PageSize)
+	bookings, total, err := h.service.ListForWebUser(r.Context(), webUserID, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -150,8 +151,8 @@ func parseDateRange(r *http.Request) (from, to *time.Time) {
 // back-office tables, which differ per booker/booking type: events have a
 // venue column, individual stays have room + dates + nights, and corporate
 // (non-event) bookings show the booking sub-type and who booked.
-func (h *BookingHandler) exportCSV(w http.ResponseWriter, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) {
-	bookings, err := h.service.ListForExport(orgID, bookerType, bookingType, status, from, to)
+func (h *BookingHandler) exportCSV(ctx context.Context, w http.ResponseWriter, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) {
+	bookings, err := h.service.ListForExport(ctx, orgID, bookerType, bookingType, status, from, to)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -228,7 +229,7 @@ func (h *BookingHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.service.GetByID(id, orgID)
+	booking, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -254,7 +255,7 @@ func (h *BookingHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UpdateStatus(id, orgID, req.Status); err != nil {
+	if err := h.service.UpdateStatus(r.Context(), id, orgID, req.Status); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -271,12 +272,12 @@ func (h *BookingHandler) CheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.CheckIn(id, orgID); err != nil {
+	if err := h.service.CheckIn(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	booking, err := h.service.GetByID(id, orgID)
+	booking, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -293,12 +294,12 @@ func (h *BookingHandler) CheckOut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.CheckOut(id, orgID); err != nil {
+	if err := h.service.CheckOut(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	booking, err := h.service.GetByID(id, orgID)
+	booking, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -315,7 +316,7 @@ func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Cancel(id, orgID); err != nil {
+	if err := h.service.Cancel(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -340,7 +341,7 @@ func (h *BookingHandler) AssignRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	assignment, err := h.service.AssignRoom(id, orgID, &req)
+	assignment, err := h.service.AssignRoom(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -358,7 +359,7 @@ func (h *BookingHandler) ListAssignments(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	assignments, err := h.service.ListAssignments(id, orgID)
+	assignments, err := h.service.ListAssignments(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -387,7 +388,7 @@ func (h *BookingHandler) UpdateAssignment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	assignment, err := h.service.UpdateAssignment(id, orgID, assignID, &req)
+	assignment, err := h.service.UpdateAssignment(r.Context(), id, orgID, assignID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -410,7 +411,7 @@ func (h *BookingHandler) RemoveAssignment(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	if err := h.service.RemoveAssignment(id, orgID, assignID); err != nil {
+	if err := h.service.RemoveAssignment(r.Context(), id, orgID, assignID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -432,7 +433,7 @@ func (h *BookingHandler) CheckInAssignment(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.service.CheckInAssignment(id, orgID, assignID); err != nil {
+	if err := h.service.CheckInAssignment(r.Context(), id, orgID, assignID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -454,7 +455,7 @@ func (h *BookingHandler) CheckOutAssignment(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.service.CheckOutAssignment(id, orgID, assignID); err != nil {
+	if err := h.service.CheckOutAssignment(r.Context(), id, orgID, assignID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -473,7 +474,7 @@ func (h *BookingHandler) ListAttendees(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attendees, err := h.service.ListAttendees(id, orgID)
+	attendees, err := h.service.ListAttendees(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -497,7 +498,7 @@ func (h *BookingHandler) AddAttendee(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attendee, err := h.service.AddAttendee(id, orgID, &req)
+	attendee, err := h.service.AddAttendee(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -526,7 +527,7 @@ func (h *BookingHandler) UpdateAttendee(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	attendee, err := h.service.UpdateAttendee(id, orgID, attendeeID, &req)
+	attendee, err := h.service.UpdateAttendee(r.Context(), id, orgID, attendeeID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -549,7 +550,7 @@ func (h *BookingHandler) RemoveAttendee(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.service.RemoveAttendee(id, orgID, attendeeID); err != nil {
+	if err := h.service.RemoveAttendee(r.Context(), id, orgID, attendeeID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

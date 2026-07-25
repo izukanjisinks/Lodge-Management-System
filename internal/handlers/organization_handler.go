@@ -1,21 +1,21 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type OrganizationHandler struct {
-	service *services.BackofficeOrganizationService
+	service interfaces.BackofficeOrganizationInterface
 }
 
-func NewOrganizationHandler(service *services.BackofficeOrganizationService) *OrganizationHandler {
+func NewOrganizationHandler(service interfaces.BackofficeOrganizationInterface) *OrganizationHandler {
 	return &OrganizationHandler{service: service}
 }
 
@@ -26,7 +26,7 @@ func (h *OrganizationHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	org, err := h.service.GetByID(id)
+	org, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Organization not found")
 		return
@@ -38,7 +38,7 @@ func (h *OrganizationHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 func (h *OrganizationHandler) Get(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	org, err := h.service.GetByID(orgID)
+	org, err := h.service.GetByID(r.Context(), orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Organization not found")
 		return
@@ -56,7 +56,7 @@ func (h *OrganizationHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	org, err := h.service.Update(orgID, req)
+	org, err := h.service.Update(r.Context(), orgID, req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

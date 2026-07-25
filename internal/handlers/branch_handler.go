@@ -1,28 +1,28 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type BranchHandler struct {
-	service *services.BranchService
+	service interfaces.BranchInterface
 }
 
-func NewBranchHandler(service *services.BranchService) *BranchHandler {
+func NewBranchHandler(service interfaces.BranchInterface) *BranchHandler {
 	return &BranchHandler{service: service}
 }
 
 // List handles GET /api/v1/branches
 func (h *BranchHandler) List(w http.ResponseWriter, r *http.Request) {
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
-	branches, err := h.service.List(orgID)
+	branches, err := h.service.List(r.Context(), orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve branches")
 		return
@@ -38,7 +38,7 @@ func (h *BranchHandler) Create(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	branch, err := h.service.Create(orgID, &req)
+	branch, err := h.service.Create(r.Context(), orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -54,7 +54,7 @@ func (h *BranchHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid branch ID")
 		return
 	}
-	branch, err := h.service.GetByID(id, orgID)
+	branch, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -75,7 +75,7 @@ func (h *BranchHandler) Update(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
-	branch, err := h.service.Update(id, orgID, &req)
+	branch, err := h.service.Update(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -91,7 +91,7 @@ func (h *BranchHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		utils.RespondError(w, http.StatusBadRequest, "Invalid branch ID")
 		return
 	}
-	if err := h.service.Delete(id, orgID); err != nil {
+	if err := h.service.Delete(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

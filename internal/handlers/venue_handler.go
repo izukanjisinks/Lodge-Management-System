@@ -1,21 +1,21 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type VenueHandler struct {
-	service *services.VenueService
+	service interfaces.VenueInterface
 }
 
-func NewVenueHandler(service *services.VenueService) *VenueHandler {
+func NewVenueHandler(service interfaces.VenueInterface) *VenueHandler {
 	return &VenueHandler{service: service}
 }
 
@@ -39,7 +39,7 @@ func (h *VenueHandler) List(w http.ResponseWriter, r *http.Request) {
 	// Optional [from, to] window: excludes venues already reserved in that range.
 	from, to := parseDateRange(r)
 
-	venues, total, err := h.service.List(orgID, branchID, venueType, isAvailable, from, to, pag.Page, pag.PageSize)
+	venues, total, err := h.service.List(r.Context(), orgID, branchID, venueType, isAvailable, from, to, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -81,7 +81,7 @@ func (h *VenueHandler) GuestList(w http.ResponseWriter, r *http.Request) {
 	// Optional [from, to] window: excludes venues already reserved in that range.
 	from, to := parseDateRange(r)
 
-	venues, err := h.service.GuestList(orgID, branchID, venueType, from, to)
+	venues, err := h.service.GuestList(r.Context(), orgID, branchID, venueType, from, to)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -100,7 +100,7 @@ func (h *VenueHandler) GuestGetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	venue, err := h.service.GetByIDUnscoped(id)
+	venue, err := h.service.GetByIDUnscoped(r.Context(), id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Venue not found")
 		return
@@ -117,7 +117,7 @@ func (h *VenueHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	venue, err := h.service.GetByID(id, orgID)
+	venue, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Venue not found")
 		return
@@ -140,7 +140,7 @@ func (h *VenueHandler) Create(w http.ResponseWriter, r *http.Request) {
 		venue.BranchID = branchID
 	}
 
-	if err := h.service.Create(&venue, orgID); err != nil {
+	if err := h.service.Create(r.Context(), &venue, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -162,7 +162,7 @@ func (h *VenueHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	venue, err := h.service.Update(id, orgID, &updates)
+	venue, err := h.service.Update(r.Context(), id, orgID, &updates)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -187,7 +187,7 @@ func (h *VenueHandler) UpdateImages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	venue, err := h.service.UpdateImages(id, orgID, req.Images)
+	venue, err := h.service.UpdateImages(r.Context(), id, orgID, req.Images)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -212,7 +212,7 @@ func (h *VenueHandler) SetAvailability(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.SetAvailability(id, orgID, req.IsAvailable); err != nil {
+	if err := h.service.SetAvailability(r.Context(), id, orgID, req.IsAvailable); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -231,7 +231,7 @@ func (h *VenueHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.Delete(id, orgID); err != nil {
+	if err := h.service.Delete(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}

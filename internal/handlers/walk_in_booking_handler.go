@@ -1,13 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 
+	"lodge-system/internal/interfaces"
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
@@ -20,13 +21,13 @@ import (
 // the spot. It accepts the same envelopes the website uses, branching on
 // booking_context (individual | corporate).
 type WalkInBookingHandler struct {
-	individual *services.IndividualBookingRequestService
-	corporate  *services.CorporateBookingRequestService
+	individual interfaces.IndividualBookingRequestInterface
+	corporate  interfaces.CorporateBookingRequestInterface
 }
 
 func NewWalkInBookingHandler(
-	individual *services.IndividualBookingRequestService,
-	corporate *services.CorporateBookingRequestService,
+	individual interfaces.IndividualBookingRequestInterface,
+	corporate interfaces.CorporateBookingRequestInterface,
 ) *WalkInBookingHandler {
 	return &WalkInBookingHandler{individual: individual, corporate: corporate}
 }
@@ -51,7 +52,7 @@ func (h *WalkInBookingHandler) SubmitMeal(w http.ResponseWriter, r *http.Request
 		req.BranchID = branchID
 	}
 
-	booking, err := h.createMeal(orgID, &req)
+	booking, err := h.createMeal(r.Context(), orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -78,7 +79,7 @@ func (h *WalkInBookingHandler) SubmitEvent(w http.ResponseWriter, r *http.Reques
 		req.BranchID = branchID
 	}
 
-	booking, err := h.createEvent(orgID, &req)
+	booking, err := h.createEvent(r.Context(), orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -125,7 +126,7 @@ func (h *WalkInBookingHandler) SubmitAccommodation(w http.ResponseWriter, r *htt
 			utils.RespondError(w, http.StatusBadRequest, "Invalid request body")
 			return
 		}
-		booking, err = h.individual.WalkInAccommodation(orgID, branchID, &req)
+		booking, err = h.individual.WalkInAccommodation(r.Context(), orgID, branchID, &req)
 	} else {
 		var cBody walkInAccommodationBody
 		if jErr := json.Unmarshal(body, &cBody); jErr != nil {
@@ -137,7 +138,7 @@ func (h *WalkInBookingHandler) SubmitAccommodation(w http.ResponseWriter, r *htt
 			cBody.BranchID = branchID
 		}
 		matReq := &models.MaterialiseRequest{Assignments: cBody.Assignments}
-		booking, err = h.corporate.WalkInAccommodation(orgID, branchID, &cBody.SubmitAccommodationRequest, matReq)
+		booking, err = h.corporate.WalkInAccommodation(r.Context(), orgID, branchID, &cBody.SubmitAccommodationRequest, matReq)
 	}
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
@@ -146,16 +147,16 @@ func (h *WalkInBookingHandler) SubmitAccommodation(w http.ResponseWriter, r *htt
 	utils.RespondJSON(w, http.StatusCreated, booking)
 }
 
-func (h *WalkInBookingHandler) createMeal(orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (h *WalkInBookingHandler) createMeal(ctx context.Context, orgID uuid.UUID, req *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	if req.BookingContext == "corporate" {
-		return h.corporate.WalkInMeal(orgID, req)
+		return h.corporate.WalkInMeal(ctx, orgID, req)
 	}
-	return h.individual.WalkInMeal(orgID, req)
+	return h.individual.WalkInMeal(ctx, orgID, req)
 }
 
-func (h *WalkInBookingHandler) createEvent(orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (h *WalkInBookingHandler) createEvent(ctx context.Context, orgID uuid.UUID, req *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if req.BookingContext == "corporate" {
-		return h.corporate.WalkInEvent(orgID, req)
+		return h.corporate.WalkInEvent(ctx, orgID, req)
 	}
-	return h.individual.WalkInEvent(orgID, req)
+	return h.individual.WalkInEvent(ctx, orgID, req)
 }

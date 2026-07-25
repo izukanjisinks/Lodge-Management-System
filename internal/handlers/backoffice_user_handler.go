@@ -1,25 +1,25 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type BackofficeUserHandler struct {
-	service *services.BackofficeUserService
+	service interfaces.BackofficeUserInterface
 }
 
-func NewBackofficeUserHandler(service *services.BackofficeUserService) *BackofficeUserHandler {
+func NewBackofficeUserHandler(service interfaces.BackofficeUserInterface) *BackofficeUserHandler {
 	return &BackofficeUserHandler{service: service}
 }
 
 func (h *BackofficeUserHandler) List(w http.ResponseWriter, r *http.Request) {
-	users, err := h.service.List()
+	users, err := h.service.List(r.Context())
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve backoffice users")
 		return
@@ -40,7 +40,7 @@ func (h *BackofficeUserHandler) GetByID(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, err := h.service.GetByID(id)
+	user, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "User not found")
 		return
@@ -56,7 +56,7 @@ func (h *BackofficeUserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.Create(req)
+	user, err := h.service.Create(r.Context(), req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -78,7 +78,7 @@ func (h *BackofficeUserHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.Update(id, req)
+	user, err := h.service.Update(r.Context(), id, req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -94,7 +94,7 @@ func (h *BackofficeUserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -109,7 +109,7 @@ func (h *BackofficeUserHandler) ResetPassword(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := h.service.ResetPassword(id); err != nil {
+	if err := h.service.ResetPassword(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -124,7 +124,7 @@ func (h *BackofficeUserHandler) Lock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Lock(id); err != nil {
+	if err := h.service.Lock(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -139,7 +139,7 @@ func (h *BackofficeUserHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Unlock(id); err != nil {
+	if err := h.service.Unlock(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

@@ -1,18 +1,18 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
 
 type BackofficeAuthHandler struct {
-	service *services.BackofficeAuthService
+	service interfaces.BackofficeAuthInterface
 }
 
-func NewBackofficeAuthHandler(service *services.BackofficeAuthService) *BackofficeAuthHandler {
+func NewBackofficeAuthHandler(service interfaces.BackofficeAuthInterface) *BackofficeAuthHandler {
 	return &BackofficeAuthHandler{service: service}
 }
 
@@ -27,7 +27,7 @@ func (h *BackofficeAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.service.Login(req.Email, req.Password)
+	user, token, err := h.service.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -56,7 +56,7 @@ func (h *BackofficeAuthHandler) ChangePassword(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.service.ChangePassword(callerID, req.CurrentPassword, req.NewPassword); err != nil {
+	if err := h.service.ChangePassword(r.Context(), callerID, req.CurrentPassword, req.NewPassword); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -72,7 +72,7 @@ func (h *BackofficeAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.GetByID(callerID)
+	user, err := h.service.GetByID(r.Context(), callerID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "User not found")
 		return

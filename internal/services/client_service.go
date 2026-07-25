@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"lodge-system/internal/models"
@@ -10,9 +11,9 @@ import (
 )
 
 type ClientService struct {
-	repo            *repository.ClientRepository
-	bookingRepo     *repository.BookingRepository
-	bookingDocRepo  *repository.BookingDocumentRepository
+	repo           *repository.ClientRepository
+	bookingRepo    *repository.BookingRepository
+	bookingDocRepo *repository.BookingDocumentRepository
 }
 
 func NewClientService(repo *repository.ClientRepository) *ClientService {
@@ -29,7 +30,7 @@ func (s *ClientService) SetBookingDocumentRepository(r *repository.BookingDocume
 
 // ─── Individual ───────────────────────────────────────────────────────────────
 
-func (s *ClientService) CreateIndividual(orgID uuid.UUID, c *models.IndividualClient) error {
+func (s *ClientService) CreateIndividual(ctx context.Context, orgID uuid.UUID, c *models.IndividualClient) error {
 	if c.FullName == "" {
 		return errors.New("full_name is required")
 	}
@@ -51,11 +52,11 @@ func (s *ClientService) CreateIndividual(orgID uuid.UUID, c *models.IndividualCl
 	return nil
 }
 
-func (s *ClientService) GetIndividualByID(id uuid.UUID, orgID uuid.UUID) (*models.IndividualClient, error) {
+func (s *ClientService) GetIndividualByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.IndividualClient, error) {
 	return s.repo.GetIndividualByID(id, orgID)
 }
 
-func (s *ClientService) ListIndividual(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
+func (s *ClientService) ListIndividual(ctx context.Context, orgID uuid.UUID, search, status string, page, pageSize int) ([]models.IndividualClient, int, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -65,7 +66,7 @@ func (s *ClientService) ListIndividual(orgID uuid.UUID, search, status string, p
 	return s.repo.ListIndividual(orgID, search, status, page, pageSize)
 }
 
-func (s *ClientService) UpdateIndividual(id uuid.UUID, orgID uuid.UUID, updates *models.IndividualClient) (*models.IndividualClient, error) {
+func (s *ClientService) UpdateIndividual(ctx context.Context, id uuid.UUID, orgID uuid.UUID, updates *models.IndividualClient) (*models.IndividualClient, error) {
 	existing, err := s.repo.GetIndividualByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("individual client not found")
@@ -95,11 +96,11 @@ func (s *ClientService) UpdateIndividual(id uuid.UUID, orgID uuid.UUID, updates 
 	return s.repo.GetIndividualByID(id, orgID)
 }
 
-func (s *ClientService) DeleteIndividual(id uuid.UUID, orgID uuid.UUID) error {
+func (s *ClientService) DeleteIndividual(ctx context.Context, id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.DeleteIndividual(id, orgID)
 }
 
-func (s *ClientService) LookupIndividualByIDNumber(orgID uuid.UUID, idNumber string) (*models.IndividualClient, error) {
+func (s *ClientService) LookupIndividualByIDNumber(ctx context.Context, orgID uuid.UUID, idNumber string) (*models.IndividualClient, error) {
 	if idNumber == "" {
 		return nil, errors.New("id_number is required")
 	}
@@ -112,7 +113,7 @@ func (s *ClientService) LookupIndividualByIDNumber(orgID uuid.UUID, idNumber str
 // a reg number are required — reg number is part of the dedup key. Contact fields
 // (person/email/phone) are captured on cor_profiles through the booking chain, not
 // here, so they aren't required for a staff-created company shell.
-func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClient) error {
+func (s *ClientService) CreateCorporate(ctx context.Context, orgID uuid.UUID, c *models.CorporateClient) error {
 	if c.CompanyName == "" {
 		return errors.New("company_name is required")
 	}
@@ -128,11 +129,11 @@ func (s *ClientService) CreateCorporate(orgID uuid.UUID, c *models.CorporateClie
 	return nil
 }
 
-func (s *ClientService) GetCorporateByID(id uuid.UUID, orgID uuid.UUID) (*models.CorporateClient, error) {
+func (s *ClientService) GetCorporateByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.CorporateClient, error) {
 	return s.repo.GetCorporateByID(id, orgID)
 }
 
-func (s *ClientService) ListCorporate(orgID uuid.UUID, search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
+func (s *ClientService) ListCorporate(ctx context.Context, orgID uuid.UUID, search, status string, page, pageSize int) ([]models.CorporateClient, int, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -145,7 +146,7 @@ func (s *ClientService) ListCorporate(orgID uuid.UUID, search, status string, pa
 // UpdateCorporate updates the company-level fields on cor_company_details. Contact
 // person/email/phone are read-only here (they belong to cor_profiles), so edits to
 // them from the client dialog are ignored.
-func (s *ClientService) UpdateCorporate(id uuid.UUID, orgID uuid.UUID, updates *models.CorporateClient) (*models.CorporateClient, error) {
+func (s *ClientService) UpdateCorporate(ctx context.Context, id uuid.UUID, orgID uuid.UUID, updates *models.CorporateClient) (*models.CorporateClient, error) {
 	existing, err := s.repo.GetCorporateByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("corporate client not found")
@@ -174,18 +175,18 @@ func (s *ClientService) UpdateCorporate(id uuid.UUID, orgID uuid.UUID, updates *
 	return s.repo.GetCorporateByID(id, orgID)
 }
 
-func (s *ClientService) DeleteCorporate(id uuid.UUID, orgID uuid.UUID) error {
+func (s *ClientService) DeleteCorporate(ctx context.Context, id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.DeleteCorporate(id, orgID)
 }
 
-func (s *ClientService) SearchCorporate(orgID uuid.UUID, search string) ([]models.CorporateClient, error) {
+func (s *ClientService) SearchCorporate(ctx context.Context, orgID uuid.UUID, search string) ([]models.CorporateClient, error) {
 	if search == "" {
 		return []models.CorporateClient{}, nil
 	}
 	return s.repo.SearchCorporate(orgID, search, 10)
 }
 
-func (s *ClientService) GetCorporateWithBookings(id, orgID uuid.UUID) (*models.CorporateClientWithBookings, error) {
+func (s *ClientService) GetCorporateWithBookings(ctx context.Context, id, orgID uuid.UUID) (*models.CorporateClientWithBookings, error) {
 	client, err := s.repo.GetCorporateByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("corporate client not found")
@@ -230,7 +231,7 @@ func (s *ClientService) GetCorporateWithBookings(id, orgID uuid.UUID) (*models.C
 	}, nil
 }
 
-func (s *ClientService) UpsertDocuments(corporateClientID, orgID uuid.UUID, urls []string) (*models.BookingDocument, error) {
+func (s *ClientService) UpsertDocuments(ctx context.Context, corporateClientID, orgID uuid.UUID, urls []string) (*models.BookingDocument, error) {
 	if s.bookingDocRepo == nil {
 		return nil, errors.New("document storage not available")
 	}

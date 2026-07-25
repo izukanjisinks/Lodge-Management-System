@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"lodge-system/internal/models"
@@ -34,29 +35,29 @@ func NewCorProfileService(
 
 // ─── Company ──────────────────────────────────────────────────────────────────
 
-func (s *CorProfileService) GetCompany(id, orgID uuid.UUID) (*models.CorCompanyDetails, error) {
+func (s *CorProfileService) GetCompany(ctx context.Context, id, orgID uuid.UUID) (*models.CorCompanyDetails, error) {
 	return s.companyRepo.GetByID(id, orgID)
 }
 
-func (s *CorProfileService) ListCompanies(orgID uuid.UUID, page, pageSize int) ([]models.CorCompanyDetails, int, error) {
+func (s *CorProfileService) ListCompanies(ctx context.Context, orgID uuid.UUID, page, pageSize int) ([]models.CorCompanyDetails, int, error) {
 	return s.companyRepo.List(orgID, page, pageSize)
 }
 
-func (s *CorProfileService) UpdateCompany(id, orgID uuid.UUID, req *models.UpdateCorCompanyRequest) (*models.CorCompanyDetails, error) {
+func (s *CorProfileService) UpdateCompany(ctx context.Context, id, orgID uuid.UUID, req *models.UpdateCorCompanyRequest) (*models.CorCompanyDetails, error) {
 	return s.companyRepo.Update(id, orgID, req)
 }
 
 // ─── Branch ───────────────────────────────────────────────────────────────────
 
-func (s *CorProfileService) GetBranch(id, companyID uuid.UUID) (*models.CorBranchDetails, error) {
+func (s *CorProfileService) GetBranch(ctx context.Context, id, companyID uuid.UUID) (*models.CorBranchDetails, error) {
 	return s.branchRepo.GetByID(id, companyID)
 }
 
-func (s *CorProfileService) ListBranches(companyID uuid.UUID) ([]models.CorBranchDetails, error) {
+func (s *CorProfileService) ListBranches(ctx context.Context, companyID uuid.UUID) ([]models.CorBranchDetails, error) {
 	return s.branchRepo.List(companyID)
 }
 
-func (s *CorProfileService) CreateBranch(companyID uuid.UUID, req *models.CreateCorBranchRequest) (*models.CorBranchDetails, error) {
+func (s *CorProfileService) CreateBranch(ctx context.Context, companyID uuid.UUID, req *models.CreateCorBranchRequest) (*models.CorBranchDetails, error) {
 	if req.Name == "" {
 		return nil, errors.New("branch name is required")
 	}
@@ -68,21 +69,21 @@ func (s *CorProfileService) CreateBranch(companyID uuid.UUID, req *models.Create
 	return s.branchRepo.GetOrCreate(companyID, input)
 }
 
-func (s *CorProfileService) UpdateBranch(id, companyID uuid.UUID, req *models.UpdateCorBranchRequest) (*models.CorBranchDetails, error) {
+func (s *CorProfileService) UpdateBranch(ctx context.Context, id, companyID uuid.UUID, req *models.UpdateCorBranchRequest) (*models.CorBranchDetails, error) {
 	return s.branchRepo.Update(id, companyID, req)
 }
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
-func (s *CorProfileService) GetProfile(id, orgID uuid.UUID) (*models.CorProfile, error) {
+func (s *CorProfileService) GetProfile(ctx context.Context, id, orgID uuid.UUID) (*models.CorProfile, error) {
 	return s.profileRepo.GetByID(id, orgID)
 }
 
-func (s *CorProfileService) ListProfiles(companyID uuid.UUID, page, pageSize int) ([]models.CorProfile, int, error) {
+func (s *CorProfileService) ListProfiles(ctx context.Context, companyID uuid.UUID, page, pageSize int) ([]models.CorProfile, int, error) {
 	return s.profileRepo.List(companyID, page, pageSize)
 }
 
-func (s *CorProfileService) CreateProfile(orgID uuid.UUID, req *models.CreateCorProfileRequest) (*models.CorProfile, error) {
+func (s *CorProfileService) CreateProfile(ctx context.Context, orgID uuid.UUID, req *models.CreateCorProfileRequest) (*models.CorProfile, error) {
 	if req.FirstName == "" || req.LastName == "" {
 		return nil, errors.New("first_name and last_name are required")
 	}
@@ -97,21 +98,21 @@ func (s *CorProfileService) CreateProfile(orgID uuid.UUID, req *models.CreateCor
 	return s.profileRepo.GetOrCreate(orgID, req.CompanyID, req.BranchID, input)
 }
 
-func (s *CorProfileService) UpdateProfile(id, orgID uuid.UUID, req *models.UpdateCorProfileRequest) (*models.CorProfile, error) {
+func (s *CorProfileService) UpdateProfile(ctx context.Context, id, orgID uuid.UUID, req *models.UpdateCorProfileRequest) (*models.CorProfile, error) {
 	return s.profileRepo.Update(id, orgID, req)
 }
 
 // ─── Corporate Guests ─────────────────────────────────────────────────────────
 
-func (s *CorProfileService) GetGuest(id, profileID uuid.UUID) (*models.CorporateGuest, error) {
+func (s *CorProfileService) GetGuest(ctx context.Context, id, profileID uuid.UUID) (*models.CorporateGuest, error) {
 	return s.guestRepo.GetByID(id, profileID)
 }
 
-func (s *CorProfileService) ListGuests(profileID uuid.UUID) ([]models.CorporateGuest, error) {
+func (s *CorProfileService) ListGuests(ctx context.Context, profileID uuid.UUID) ([]models.CorporateGuest, error) {
 	return s.guestRepo.List(profileID)
 }
 
-func (s *CorProfileService) AddGuest(profileID uuid.UUID, req *models.CreateCorporateGuestRequest) (*models.CorporateGuest, error) {
+func (s *CorProfileService) AddGuest(ctx context.Context, profileID uuid.UUID, req *models.CreateCorporateGuestRequest) (*models.CorporateGuest, error) {
 	if req.FirstName == "" || req.LastName == "" || req.IdentificationCard == "" {
 		return nil, errors.New("first_name, last_name, and identification_card are required")
 	}
@@ -125,11 +126,11 @@ func (s *CorProfileService) AddGuest(profileID uuid.UUID, req *models.CreateCorp
 	return s.guestRepo.Create(profileID, input)
 }
 
-func (s *CorProfileService) UpdateGuest(id, profileID uuid.UUID, req *models.UpdateCorporateGuestRequest) (*models.CorporateGuest, error) {
+func (s *CorProfileService) UpdateGuest(ctx context.Context, id, profileID uuid.UUID, req *models.UpdateCorporateGuestRequest) (*models.CorporateGuest, error) {
 	return s.guestRepo.Update(id, profileID, req)
 }
 
-func (s *CorProfileService) DeleteGuest(id, profileID uuid.UUID) error {
+func (s *CorProfileService) DeleteGuest(ctx context.Context, id, profileID uuid.UUID) error {
 	return s.guestRepo.Delete(id, profileID)
 }
 
@@ -137,7 +138,7 @@ func (s *CorProfileService) DeleteGuest(id, profileID uuid.UUID) error {
 
 // ResolveChain upserts company → branch → profile in sequence and returns their IDs.
 // Called at the start of every corporate booking submission.
-func (s *CorProfileService) ResolveChain(orgID uuid.UUID, company models.CorBookingCompanyInput, branch *models.CorBookingBranchInput, profile models.CorBookingProfileInput) (companyID uuid.UUID, branchID *uuid.UUID, profileID uuid.UUID, err error) {
+func (s *CorProfileService) ResolveChain(ctx context.Context, orgID uuid.UUID, company models.CorBookingCompanyInput, branch *models.CorBookingBranchInput, profile models.CorBookingProfileInput) (companyID uuid.UUID, branchID *uuid.UUID, profileID uuid.UUID, err error) {
 	c, err := s.companyRepo.GetOrCreate(orgID, company)
 	if err != nil {
 		return uuid.Nil, nil, uuid.Nil, errors.New("failed to resolve company: " + err.Error())

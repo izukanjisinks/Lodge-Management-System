@@ -1,21 +1,21 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
-	userService *services.UserService
+	userService interfaces.UserInterface
 }
 
-func NewAuthHandler(userService *services.UserService) *AuthHandler {
+func NewAuthHandler(userService interfaces.UserInterface) *AuthHandler {
 	return &AuthHandler{userService: userService}
 }
 
@@ -34,7 +34,7 @@ func (h *AuthHandler) AdminUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.GetByEmail(req.Email)
+	user, err := h.userService.GetByEmail(r.Context(), req.Email)
 
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "User not found")
@@ -78,7 +78,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	result, err := h.userService.LoginWithOrg(req.Email, req.Password, orgID)
+	result, err := h.userService.LoginWithOrg(r.Context(), req.Email, req.Password, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -131,11 +131,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		IsActive: req.Status != "inactive",
 	}
 
-	if err := h.userService.Register(user); err != nil {
+	if err := h.userService.Register(r.Context(), user); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	utils.RespondJSON(w, http.StatusCreated, userResponse(user))
 }
-

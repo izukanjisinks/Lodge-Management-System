@@ -21,7 +21,7 @@ func (h *MealCollectionHandler) ListCards(w http.ResponseWriter, r *http.Request
 			roomID = &parsed
 		}
 	}
-	cards, err := h.service.ListCards(orgID, roomID, r.URL.Query().Get("status"))
+	cards, err := h.service.ListCards(r.Context(), orgID, roomID, r.URL.Query().Get("status"))
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -41,7 +41,7 @@ func (h *MealCollectionHandler) AssignCard(w http.ResponseWriter, r *http.Reques
 		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	card, err := h.service.AssignCard(orgID, branchID, &req)
+	card, err := h.service.AssignCard(r.Context(), orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -92,7 +92,7 @@ func (h *MealCollectionHandler) UpdateCard(w http.ResponseWriter, r *http.Reques
 			}
 		}
 	}
-	card, err := h.service.UpdateCard(id, orgID, &req)
+	card, err := h.service.UpdateCard(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -112,7 +112,7 @@ func (h *MealCollectionHandler) ReplaceCard(w http.ResponseWriter, r *http.Reque
 		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	card, err := h.service.ReplaceCard(id, orgID, &req)
+	card, err := h.service.ReplaceCard(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -127,7 +127,7 @@ func (h *MealCollectionHandler) VoidCard(w http.ResponseWriter, r *http.Request)
 		utils.RespondError(w, http.StatusBadRequest, "invalid card id")
 		return
 	}
-	card, err := h.service.VoidCard(id, orgID)
+	card, err := h.service.VoidCard(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
