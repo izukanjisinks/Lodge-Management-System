@@ -10,6 +10,7 @@ import (
 	"lodge-system/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type OrderRepository struct {
@@ -350,6 +351,27 @@ func (r *OrderRepository) List(orgID uuid.UUID, branchID *uuid.UUID, orderType, 
 		}
 		orders = append(orders, o)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// Bulk-load items for every order on this page in one query, instead of
+	// making callers fan out to GetByID per order (the Kitchen/Bar boards used
+	// to do exactly that — 1 + N HTTP calls per page load/refresh).
+	if len(orders) > 0 {
+		ids := make([]uuid.UUID, len(orders))
+		for i, o := range orders {
+			ids[i] = o.ID
+		}
+		itemsByOrder, err := r.fetchItemsForOrders(ids)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range orders {
+			orders[i].Items = itemsByOrder[orders[i].ID]
+		}
+	}
+
 	return orders, total, rows.Err()
 }
 
@@ -699,4 +721,53 @@ func (r *OrderRepository) fetchItems(orderID uuid.UUID) ([]models.OrderItem, err
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// fetchItemsForOrders bulk-loads items for every order ID given, in a single
+// query, and groups them by order_id. Used to populate Order.Items on List()
+// results without an N+1 per-order round trip (the Kitchen/Bar boards used to
+// fetch each order's detail individually — see menusApi.getOrder fan-out).
+func (r *OrderRepository) fetchItemsForOrders(orderIDs []uuid.UUID) (map[uuid.UUID][]models.OrderItem, error) {
+	byOrder := make(map[uuid.UUID][]models.OrderItem, len(orderIDs))
+	if len(orderIDs) == 0 {
+		return byOrder, nil
+	}
+
+	rows, err := r.db.Query(`
+		SELECT oi.id, oi.order_id, oi.menu_item_id, oi.attendee_id,
+		       COALESCE(att.full_name, '') AS attendee_name,
+		       mi.name, COALESCE(mi.category, ''), mi.production_area, oi.quantity, oi.unit_price, oi.subtotal, oi.notes, oi.created_at
+		FROM order_items oi
+		JOIN menu_items mi ON mi.id = oi.menu_item_id
+		LEFT JOIN booking_attendees att ON att.id = oi.attendee_id
+		WHERE oi.order_id = ANY($1)
+		ORDER BY oi.order_id, att.full_name ASC NULLS LAST, oi.created_at ASC`, pq.Array(orderIDs))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item models.OrderItem
+		var attendeeID uuid.NullUUID
+		var attendeeName, productionArea, notes sql.NullString
+		if err := rows.Scan(&item.ID, &item.OrderID, &item.MenuItemID, &attendeeID, &attendeeName,
+			&item.ItemName, &item.Category, &productionArea, &item.Quantity, &item.UnitPrice, &item.Subtotal, &notes, &item.CreatedAt); err != nil {
+			return nil, err
+		}
+		if attendeeID.Valid {
+			item.AttendeeID = &attendeeID.UUID
+		}
+		if attendeeName.Valid {
+			item.AttendeeName = attendeeName.String
+		}
+		if productionArea.Valid {
+			item.ProductionArea = productionArea.String
+		}
+		if notes.Valid {
+			item.Notes = notes.String
+		}
+		byOrder[item.OrderID] = append(byOrder[item.OrderID], item)
+	}
+	return byOrder, rows.Err()
 }
