@@ -18,7 +18,13 @@ func RegisterBranchRoutes(h *handlers.BranchHandler) {
 		withAuthAndRole(h.Create, models.RoleAdmin))
 
 	http.HandleFunc("PUT /api/v1/branches/{id}",
-		withAuthAndRole(h.Update, models.RoleAdmin))
+		withAuthAndRole(h.Update, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager))
+
+	http.HandleFunc("POST /api/v1/branches/{id}/printer/test",
+		withAuthAndRole(h.TestPrint, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
+
+	http.HandleFunc("GET /api/v1/branches/{id}/printer/test-job",
+		withAuthAndRole(h.TestPrintJob, models.RoleAdmin, models.RoleBranchAdmin, models.RoleManager, models.RoleReceptionist))
 
 	http.HandleFunc("DELETE /api/v1/branches/{id}",
 		withAuthAndRole(h.Delete, models.RoleAdmin))

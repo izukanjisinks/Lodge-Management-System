@@ -115,13 +115,13 @@ func main() {
 	orgRepo := repository.NewOrganizationRepository()
 
 	invoiceSvc := services.NewInvoiceService(invoiceRepo, bookingRepo, roomRepo, assignmentRepo, bookingEventRepo, orderRepo)
-	invoiceSvc.SetEmailService(emailService)         // email invoice PDFs to clients
-	invoiceSvc.SetOrganizationRepository(orgRepo)    // brand invoice emails with the issuing lodge's name
+	invoiceSvc.SetEmailService(emailService)      // email invoice PDFs to clients
+	invoiceSvc.SetOrganizationRepository(orgRepo) // brand invoice emails with the issuing lodge's name
 	bookingSvc := services.NewBookingService(bookingRepo, attendeeRepo, assignmentRepo, corpBookingReqRepo, corpGuestRepo, bookingEventRepo, venueRepo)
-	bookingSvc.SetInvoiceService(invoiceSvc) // auto-generate draft invoice on booking confirm/materialise
-	bookingSvc.SetOrderRepository(orderRepo)  // approved meals requests materialise into orders
+	bookingSvc.SetInvoiceService(invoiceSvc)   // auto-generate draft invoice on booking confirm/materialise
+	bookingSvc.SetOrderRepository(orderRepo)   // approved meals requests materialise into orders
 	bookingSvc.SetClientRepository(clientRepo) // approved bookings populate the individual client registry
-	invoiceSvc.SetBookingService(bookingSvc) // cancelling an invoice cascades to cancel its booking
+	invoiceSvc.SetBookingService(bookingSvc)   // cancelling an invoice cascades to cancel its booking
 
 	bookingHandler := handlers.NewBookingHandler(bookingSvc)
 	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
@@ -167,7 +167,7 @@ func main() {
 	mealCollectionSvc := services.NewMealCollectionService(mealSessionRepo, mealCardRepo, mealCollectionRepo, invoiceRepo, menuRepo, attendeeRepo)
 	mealCollectionHandler := handlers.NewMealCollectionHandler(mealCollectionSvc)
 
-	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo))
+	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo), services.NewPrinterService(branchRepo))
 	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
 
 	venueHandler := handlers.NewVenueHandler(services.NewVenueService(venueRepo))
@@ -191,7 +191,7 @@ func main() {
 	corpBookingReqSvc := services.NewCorporateBookingRequestService(corpBookingReqRepo, corpGuestRepo, corProfileSvc)
 	corpBookingReqSvc.SetWorkflowService(workflowService)
 	corpBookingReqSvc.SetVenueRepository(venueRepo)
-	corpBookingReqSvc.SetMenuRepository(menuRepo) // resolve menu item names/prices for meals task display
+	corpBookingReqSvc.SetMenuRepository(menuRepo)   // resolve menu item names/prices for meals task display
 	corpBookingReqSvc.SetBookingService(bookingSvc) // approve auto-creates event/conference bookings
 	corProfileHandler := handlers.NewCorProfileHandler(corProfileSvc)
 	corpBookingReqHandler := handlers.NewCorporateBookingRequestHandler(corpBookingReqSvc)

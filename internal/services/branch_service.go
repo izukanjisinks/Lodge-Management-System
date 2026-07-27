@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"net"
 	"strings"
 
 	"lodge-system/internal/models"
@@ -9,6 +10,18 @@ import (
 
 	"github.com/google/uuid"
 )
+
+// validatePrinterIP rejects a non-empty string that isn't a valid IPv4/IPv6
+// address, so a typo surfaces at save time rather than at print time.
+func validatePrinterIP(ip string) error {
+	if ip == "" {
+		return nil
+	}
+	if net.ParseIP(ip) == nil {
+		return errors.New("printer_ip is not a valid IP address")
+	}
+	return nil
+}
 
 type BranchService struct {
 	repo *repository.BranchRepository
@@ -57,6 +70,19 @@ func (s *BranchService) Create(orgID uuid.UUID, req *models.CreateBranchRequest)
 	}
 	if req.CheckOutTime != nil {
 		b.CheckOutTime = req.CheckOutTime
+	}
+	if err := validatePrinterIP(req.PrinterIP); err != nil {
+		return nil, err
+	}
+	if v := strings.TrimSpace(req.PrinterIP); v != "" {
+		b.PrinterIP = &v
+	}
+	b.PrinterPort = req.PrinterPort
+	if b.PrinterPort == 0 {
+		b.PrinterPort = 9100 // Epson raw ESC/POS default
+	}
+	if v := strings.TrimSpace(req.PrinterName); v != "" {
+		b.PrinterName = &v
 	}
 	if err := s.repo.Create(b); err != nil {
 		if strings.Contains(err.Error(), "unique") {
@@ -137,6 +163,28 @@ func (s *BranchService) Update(id, orgID uuid.UUID, req *models.UpdateBranchRequ
 	}
 	if req.CheckOutTime != nil {
 		b.CheckOutTime = req.CheckOutTime
+	}
+	if req.PrinterIP != nil {
+		if err := validatePrinterIP(*req.PrinterIP); err != nil {
+			return nil, err
+		}
+		v := strings.TrimSpace(*req.PrinterIP)
+		if v == "" {
+			b.PrinterIP = nil
+		} else {
+			b.PrinterIP = &v
+		}
+	}
+	if req.PrinterPort != nil {
+		b.PrinterPort = *req.PrinterPort
+	}
+	if req.PrinterName != nil {
+		v := strings.TrimSpace(*req.PrinterName)
+		if v == "" {
+			b.PrinterName = nil
+		} else {
+			b.PrinterName = &v
+		}
 	}
 	if err := s.repo.Update(b); err != nil {
 		return nil, err
