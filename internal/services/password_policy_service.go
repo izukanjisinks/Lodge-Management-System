@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -23,10 +24,10 @@ var (
 )
 
 type PasswordPolicyService struct {
-	policyRepo   *repositories.PasswordPolicyRepository
-	historyRepo  *repositories.PasswordHistoryRepository
-	policy       *models.PasswordPolicy            // global default cache
-	orgPolicies  map[uuid.UUID]*models.PasswordPolicy // per-org cache
+	policyRepo  *repositories.PasswordPolicyRepository
+	historyRepo *repositories.PasswordHistoryRepository
+	policy      *models.PasswordPolicy               // global default cache
+	orgPolicies map[uuid.UUID]*models.PasswordPolicy // per-org cache
 }
 
 func NewPasswordPolicyService(
@@ -40,7 +41,7 @@ func NewPasswordPolicyService(
 	}
 
 	// Load global default policy at startup
-	if err := service.LoadGlobalPolicy(); err != nil {
+	if err := service.LoadGlobalPolicy(context.Background()); err != nil {
 		service.policy = models.DefaultPasswordPolicy()
 	}
 
@@ -48,7 +49,7 @@ func NewPasswordPolicyService(
 }
 
 // LoadGlobalPolicy loads the global default password policy from the database.
-func (s *PasswordPolicyService) LoadGlobalPolicy() error {
+func (s *PasswordPolicyService) LoadGlobalPolicy(ctx context.Context) error {
 	policy, err := s.policyRepo.Get()
 	if err != nil {
 		return err
@@ -58,7 +59,7 @@ func (s *PasswordPolicyService) LoadGlobalPolicy() error {
 }
 
 // GetPolicy returns the effective policy for the given org: org-specific if one exists, otherwise global default.
-func (s *PasswordPolicyService) GetPolicy(orgID ...uuid.UUID) *models.PasswordPolicy {
+func (s *PasswordPolicyService) GetPolicy(ctx context.Context, orgID ...uuid.UUID) *models.PasswordPolicy {
 	if len(orgID) > 0 && orgID[0] != uuid.Nil {
 		id := orgID[0]
 		if p, ok := s.orgPolicies[id]; ok {
@@ -74,7 +75,7 @@ func (s *PasswordPolicyService) GetPolicy(orgID ...uuid.UUID) *models.PasswordPo
 }
 
 // UpsertPolicy creates or updates the org-specific policy, seeding from the global default on first creation.
-func (s *PasswordPolicyService) UpsertPolicy(orgID uuid.UUID, req *models.CreatePasswordPolicyRequest) (*models.PasswordPolicy, error) {
+func (s *PasswordPolicyService) UpsertPolicy(ctx context.Context, orgID uuid.UUID, req *models.CreatePasswordPolicyRequest) (*models.PasswordPolicy, error) {
 	// Start from the org's existing policy (or global default if none yet)
 	policy, err := s.policyRepo.GetByOrg(orgID)
 	if err != nil || policy.OrgID == nil {
@@ -170,8 +171,8 @@ func (s *PasswordPolicyService) validatePolicyRanges(policy *models.PasswordPoli
 }
 
 // ValidateNewPassword validates a new password against the org's policy and history.
-func (s *PasswordPolicyService) ValidateNewPassword(userID uuid.UUID, newPassword, currentPasswordHash string, orgID ...uuid.UUID) error {
-	policy := s.GetPolicy(orgID...)
+func (s *PasswordPolicyService) ValidateNewPassword(ctx context.Context, userID uuid.UUID, newPassword, currentPasswordHash string, orgID ...uuid.UUID) error {
+	policy := s.GetPolicy(ctx, orgID...)
 
 	if len(newPassword) < policy.MinLength {
 		return fmt.Errorf("%w: minimum %d characters required", ErrPasswordTooShort, policy.MinLength)
@@ -245,7 +246,7 @@ func (s *PasswordPolicyService) validateComplexity(password string, policy *mode
 }
 
 // RecordPasswordChange records a password change in history and updates user fields
-func (s *PasswordPolicyService) RecordPasswordChange(userID uuid.UUID, passwordHash string) error {
+func (s *PasswordPolicyService) RecordPasswordChange(ctx context.Context, userID uuid.UUID, passwordHash string) error {
 	// Add to password history
 	history := &models.PasswordHistory{
 		ID:           uuid.New(),
@@ -263,8 +264,8 @@ func (s *PasswordPolicyService) RecordPasswordChange(userID uuid.UUID, passwordH
 }
 
 // CalculatePasswordExpiry calculates when a password will expire based on the org's policy.
-func (s *PasswordPolicyService) CalculatePasswordExpiry(orgID ...uuid.UUID) *time.Time {
-	policy := s.GetPolicy(orgID...)
+func (s *PasswordPolicyService) CalculatePasswordExpiry(ctx context.Context, orgID ...uuid.UUID) *time.Time {
+	policy := s.GetPolicy(ctx, orgID...)
 	if policy.PasswordExpiryDays == nil {
 		return nil
 	}
@@ -273,7 +274,7 @@ func (s *PasswordPolicyService) CalculatePasswordExpiry(orgID ...uuid.UUID) *tim
 }
 
 // CheckPasswordExpiry checks if a user's password is expired or expiring soon
-func (s *PasswordPolicyService) CheckPasswordExpiry(user *models.User) (expired bool, expiringSoon bool, daysUntilExpiry int) {
+func (s *PasswordPolicyService) CheckPasswordExpiry(ctx context.Context, user *models.User) (expired bool, expiringSoon bool, daysUntilExpiry int) {
 	if user.PasswordExpiresAt == nil {
 		return false, false, 0 // Never expires
 	}
@@ -292,7 +293,7 @@ func (s *PasswordPolicyService) CheckPasswordExpiry(user *models.User) (expired 
 }
 
 // CheckAccountLockout checks if account is locked and returns lock status
-func (s *PasswordPolicyService) CheckAccountLockout(user *models.User) (locked bool, reason string) {
+func (s *PasswordPolicyService) CheckAccountLockout(ctx context.Context, user *models.User) (locked bool, reason string) {
 	// Check permanent lock (admin action)
 	if user.IsLocked {
 		return true, "Account has been locked by administrator"
@@ -311,16 +312,16 @@ func (s *PasswordPolicyService) CheckAccountLockout(user *models.User) (locked b
 }
 
 // ShouldLockAccount determines if account should be locked based on failed attempts.
-func (s *PasswordPolicyService) ShouldLockAccount(failedAttempts int, orgID ...uuid.UUID) bool {
-	return failedAttempts >= s.GetPolicy(orgID...).MaxFailedAttempts
+func (s *PasswordPolicyService) ShouldLockAccount(ctx context.Context, failedAttempts int, orgID ...uuid.UUID) bool {
+	return failedAttempts >= s.GetPolicy(ctx, orgID...).MaxFailedAttempts
 }
 
 // CalculateLockoutTime calculates when the lockout period expires.
-func (s *PasswordPolicyService) CalculateLockoutTime(orgID ...uuid.UUID) time.Time {
-	return time.Now().Add(time.Duration(s.GetPolicy(orgID...).LockoutDurationMins) * time.Minute)
+func (s *PasswordPolicyService) CalculateLockoutTime(ctx context.Context, orgID ...uuid.UUID) time.Time {
+	return time.Now().Add(time.Duration(s.GetPolicy(ctx, orgID...).LockoutDurationMins) * time.Minute)
 }
 
 // GetSessionTimeout returns the session timeout duration in seconds.
-func (s *PasswordPolicyService) GetSessionTimeout(orgID ...uuid.UUID) int {
-	return s.GetPolicy(orgID...).SessionTimeoutMins * 60
+func (s *PasswordPolicyService) GetSessionTimeout(ctx context.Context, orgID ...uuid.UUID) int {
+	return s.GetPolicy(ctx, orgID...).SessionTimeoutMins * 60
 }

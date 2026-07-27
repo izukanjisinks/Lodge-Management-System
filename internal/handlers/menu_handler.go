@@ -1,21 +1,21 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type MenuHandler struct {
-	service *services.MenuService
+	service interfaces.MenuInterface
 }
 
-func NewMenuHandler(service *services.MenuService) *MenuHandler {
+func NewMenuHandler(service interfaces.MenuInterface) *MenuHandler {
 	return &MenuHandler{service: service}
 }
 
@@ -31,7 +31,7 @@ func (h *MenuHandler) GetMenu(w http.ResponseWriter, r *http.Request) {
 	p := utils.ParsePagination(r)
 	category := r.URL.Query().Get("category")
 
-	menu, err := h.service.GetMenu(orgID, branchID, category, p.Page, p.PageSize)
+	menu, err := h.service.GetMenu(r.Context(), orgID, branchID, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -55,7 +55,7 @@ func (h *MenuHandler) UpsertMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	menu, err := h.service.UpsertMenu(orgID, branchID, &req, category, p.Page, p.PageSize)
+	menu, err := h.service.UpsertMenu(r.Context(), orgID, branchID, &req, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -79,7 +79,7 @@ func (h *MenuHandler) CreateMenuItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.CreateMenuItem(orgID, branchID, &req)
+	item, err := h.service.CreateMenuItem(r.Context(), orgID, branchID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -101,7 +101,7 @@ func (h *MenuHandler) UpdateMenuItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.service.UpdateMenuItem(itemID, orgID, &req)
+	item, err := h.service.UpdateMenuItem(r.Context(), itemID, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -117,7 +117,7 @@ func (h *MenuHandler) DeleteMenuItem(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.DeleteMenuItem(itemID, orgID); err != nil {
+	if err := h.service.DeleteMenuItem(r.Context(), itemID, orgID); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -151,7 +151,7 @@ func (h *MenuHandler) GuestGetMenu(w http.ResponseWriter, r *http.Request) {
 	p := utils.ParsePagination(r)
 	category := r.URL.Query().Get("category")
 
-	menu, err := h.service.GuestGetMenu(orgID, branchID, category, p.Page, p.PageSize)
+	menu, err := h.service.GuestGetMenu(r.Context(), orgID, branchID, category, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Menu not found")
 		return

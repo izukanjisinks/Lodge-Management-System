@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -59,9 +60,18 @@ func main() {
 	invoiceRepo := repository.NewInvoiceRepository()
 	dashboardRepo := repository.NewDashboardRepository()
 	auditLogRepo := repository.NewAuditLogRepository()
-	auditLogHandler := handlers.NewAuditLogHandler(services.NewAuditLogService(auditLogRepo))
+	auditLogSvc := services.NewAuditLogService(auditLogRepo)
+	var auditLogIface interfaces.AuditLogInterface = auditLogSvc
+	auditLogIface = loggermw.NewAuditLogLoggerMiddleware(auditLogIface)
+	auditLogIface = telemetrymw.NewAuditLogTelemetryMiddleware(auditLogIface)
+	auditLogHandler := handlers.NewAuditLogHandler(auditLogIface)
+
 	orgSettingsRepo := repository.NewOrganizationSettingsRepository()
-	orgSettingsHandler := handlers.NewOrganizationSettingsHandler(services.NewOrganizationSettingsService(orgSettingsRepo))
+	orgSettingsSvc := services.NewOrganizationSettingsService(orgSettingsRepo)
+	var orgSettingsIface interfaces.OrganizationSettingsInterface = orgSettingsSvc
+	orgSettingsIface = loggermw.NewOrganizationSettingsLoggerMiddleware(orgSettingsIface)
+	orgSettingsIface = telemetrymw.NewOrganizationSettingsTelemetryMiddleware(orgSettingsIface)
+	orgSettingsHandler := handlers.NewOrganizationSettingsHandler(orgSettingsIface)
 
 	workflowRepo := repository.NewWorkflowRepository()
 	instanceRepo := repository.NewWorkflowInstanceRepository()
@@ -72,11 +82,26 @@ func main() {
 	passwordHistoryRepo := repositories.NewPasswordHistoryRepository()
 
 	// Services
+	//
+	// Every service below is decorated the same way before being handed to its
+	// handler: concrete service -> logging middleware -> telemetry middleware.
+	// Handlers depend on the generated interface (internal/interfaces), so they
+	// can't tell they're talking to a decorator stack instead of the raw service.
+	// The concrete *XService var is kept alongside its decorated interface
+	// wherever other services wire against it directly (Set* DI methods, which
+	// take the concrete type, not the interface).
 	roleService := services.NewRoleService(userRepo, roleRepo)
+	var roleIface interfaces.RoleInterface = roleService
+	roleIface = loggermw.NewRoleLoggerMiddleware(roleIface)
+	roleIface = telemetrymw.NewRoleTelemetryMiddleware(roleIface)
+
 	userService := services.NewUserService(userRepo, roleRepo)
 
 	passwordPolicyService := services.NewPasswordPolicyService(passwordPolicyRepo, passwordHistoryRepo)
 	log.Println("Password policy service initialized")
+	var passwordPolicyIface interfaces.PasswordPolicyInterface = passwordPolicyService
+	passwordPolicyIface = loggermw.NewPasswordPolicyLoggerMiddleware(passwordPolicyIface)
+	passwordPolicyIface = telemetrymw.NewPasswordPolicyTelemetryMiddleware(passwordPolicyIface)
 
 	userService.SetPasswordPolicyService(passwordPolicyService)
 
@@ -86,25 +111,39 @@ func main() {
 	userService.SetEmailService(emailService)
 	emailTestHandler := handlers.NewEmailTestHandler(emailService)
 
+	var userIface interfaces.UserInterface = userService
+	userIface = loggermw.NewUserLoggerMiddleware(userIface)
+	userIface = telemetrymw.NewUserTelemetryMiddleware(userIface)
+
 	guestRepo := repository.NewGuestRepository()
 
 	workflowService := services.NewWorkflowService(workflowRepo, instanceRepo, taskRepo, historyRepo, userRepo, clientRepo, guestRepo, emailService)
+	var workflowIface interfaces.WorkflowInterface = workflowService
+	workflowIface = loggermw.NewWorkflowLoggerMiddleware(workflowIface)
+	workflowIface = telemetrymw.NewWorkflowTelemetryMiddleware(workflowIface)
 
 	// Seed predefined roles
-	if err := roleService.InitializePredefinedRoles(); err != nil {
+	if err := roleService.InitializePredefinedRoles(context.Background()); err != nil {
 		log.Fatalf("Failed to initialize roles: %v", err)
 	}
 	log.Println("Roles initialized")
 
 	// Handlers
-	authHandler := handlers.NewAuthHandler(userService)
-	userHandler := handlers.NewUserHandler(userService, roleService)
-	roomHandler := handlers.NewRoomHandler(services.NewRoomService(roomRepo))
+	authHandler := handlers.NewAuthHandler(userIface)
+	userHandler := handlers.NewUserHandler(userIface, roleIface)
+	roomSvc := services.NewRoomService(roomRepo)
+	var roomIface interfaces.RoomInterface = roomSvc
+	roomIface = loggermw.NewRoomLoggerMiddleware(roomIface)
+	roomIface = telemetrymw.NewRoomTelemetryMiddleware(roomIface)
+	roomHandler := handlers.NewRoomHandler(roomIface)
 	bookingDocRepo := repository.NewBookingDocumentRepository()
 	clientSvc := services.NewClientService(clientRepo)
 	clientSvc.SetBookingRepository(bookingRepo)
 	clientSvc.SetBookingDocumentRepository(bookingDocRepo)
-	clientHandler := handlers.NewClientHandler(clientSvc)
+	var clientIface interfaces.ClientInterface = clientSvc
+	clientIface = loggermw.NewClientLoggerMiddleware(clientIface)
+	clientIface = telemetrymw.NewClientTelemetryMiddleware(clientIface)
+	clientHandler := handlers.NewClientHandler(clientIface)
 	attendeeRepo := repository.NewBookingAttendeeRepository()
 	assignmentRepo := repository.NewBookingRoomAssignmentRepository()
 	corpBookingReqRepo := repository.NewCorporateBookingRequestRepository()
@@ -123,35 +162,63 @@ func main() {
 	bookingSvc.SetClientRepository(clientRepo) // approved bookings populate the individual client registry
 	invoiceSvc.SetBookingService(bookingSvc)   // cancelling an invoice cascades to cancel its booking
 
-	bookingHandler := handlers.NewBookingHandler(bookingSvc)
-	invoiceHandler := handlers.NewInvoiceHandler(invoiceSvc)
-	dashboardHandler := handlers.NewDashboardHandler(services.NewDashboardService(dashboardRepo))
-	workflowHandler := handlers.NewWorkflowHandler(workflowService)
+	var invoiceIface interfaces.InvoiceInterface = invoiceSvc
+	invoiceIface = loggermw.NewInvoiceLoggerMiddleware(invoiceIface)
+	invoiceIface = telemetrymw.NewInvoiceTelemetryMiddleware(invoiceIface)
+
+	var bookingIface interfaces.BookingInterface = bookingSvc
+	bookingIface = loggermw.NewBookingLoggerMiddleware(bookingIface)
+	bookingIface = telemetrymw.NewBookingTelemetryMiddleware(bookingIface)
+
+	bookingHandler := handlers.NewBookingHandler(bookingIface)
+	invoiceHandler := handlers.NewInvoiceHandler(invoiceIface)
+	dashboardSvc := services.NewDashboardService(dashboardRepo)
+	var dashboardIface interfaces.DashboardInterface = dashboardSvc
+	dashboardIface = loggermw.NewDashboardLoggerMiddleware(dashboardIface)
+	dashboardIface = telemetrymw.NewDashboardTelemetryMiddleware(dashboardIface)
+	dashboardHandler := handlers.NewDashboardHandler(dashboardIface)
+	workflowHandler := handlers.NewWorkflowHandler(workflowIface)
 	workflowAdminHandler := handlers.NewWorkflowAdminHandler(workflowRepo)
-	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyService, userService)
+	passwordPolicyHandler := handlers.NewPasswordPolicyHandler(passwordPolicyIface, userIface)
 
 	guestAuthSvc := services.NewGuestAuthService(guestRepo)
 	guestAuthSvc.SetEmailService(emailService)
+	var guestAuthIface interfaces.GuestAuthInterface = guestAuthSvc
+	guestAuthIface = loggermw.NewGuestAuthLoggerMiddleware(guestAuthIface)
+	guestAuthIface = telemetrymw.NewGuestAuthTelemetryMiddleware(guestAuthIface)
 	branchRepo := repository.NewBranchRepository()
-	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthSvc, orgRepo, branchRepo)
+	guestAuthHandler := handlers.NewGuestAuthHandler(guestAuthIface, orgRepo, branchRepo)
 
 	backofficeUserRepo := repository.NewBackofficeUserRepository()
 
 	backofficeAuthSvc := services.NewBackofficeAuthService(backofficeUserRepo)
 	backofficeAuthSvc.SetEmailService(emailService)
+	var backofficeAuthIface interfaces.BackofficeAuthInterface = backofficeAuthSvc
+	backofficeAuthIface = loggermw.NewBackofficeAuthLoggerMiddleware(backofficeAuthIface)
+	backofficeAuthIface = telemetrymw.NewBackofficeAuthTelemetryMiddleware(backofficeAuthIface)
 
 	backofficeUserSvc := services.NewBackofficeUserService(backofficeUserRepo)
 	backofficeUserSvc.SetEmailService(emailService)
+	var backofficeUserIface interfaces.BackofficeUserInterface = backofficeUserSvc
+	backofficeUserIface = loggermw.NewBackofficeUserLoggerMiddleware(backofficeUserIface)
+	backofficeUserIface = telemetrymw.NewBackofficeUserTelemetryMiddleware(backofficeUserIface)
 
 	backofficeOrgSvc := services.NewBackofficeOrganizationService(orgRepo, userRepo, roleRepo, branchRepo)
 	backofficeOrgSvc.SetEmailService(emailService)
+	var backofficeOrgIface interfaces.BackofficeOrganizationInterface = backofficeOrgSvc
+	backofficeOrgIface = loggermw.NewBackofficeOrganizationLoggerMiddleware(backofficeOrgIface)
+	backofficeOrgIface = telemetrymw.NewBackofficeOrganizationTelemetryMiddleware(backofficeOrgIface)
 
-	backofficeAuthHandler := handlers.NewBackofficeAuthHandler(backofficeAuthSvc)
-	backofficeUserHandler := handlers.NewBackofficeUserHandler(backofficeUserSvc)
-	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgSvc)
+	backofficeAuthHandler := handlers.NewBackofficeAuthHandler(backofficeAuthIface)
+	backofficeUserHandler := handlers.NewBackofficeUserHandler(backofficeUserIface)
+	backofficeOrgHandler := handlers.NewBackofficeOrganizationHandler(backofficeOrgIface)
 
 	menuRepo := repository.NewMenuRepository()
-	menuHandler := handlers.NewMenuHandler(services.NewMenuService(menuRepo))
+	menuSvc := services.NewMenuService(menuRepo)
+	var menuIface interfaces.MenuInterface = menuSvc
+	menuIface = loggermw.NewMenuLoggerMiddleware(menuIface)
+	menuIface = telemetrymw.NewMenuTelemetryMiddleware(menuIface)
+	menuHandler := handlers.NewMenuHandler(menuIface)
 	orderSvc := services.NewOrderService(orderRepo, invoiceRepo, bookingRepo, auditLogRepo)
 	// Decorate the order service: service -> logging -> telemetry. The handler
 	// depends on the interface, so it can't tell it's talking to a decorator stack.
@@ -165,21 +232,42 @@ func main() {
 	mealCardRepo := repository.NewMealCardRepository()
 	mealCollectionRepo := repository.NewMealCollectionRepository()
 	mealCollectionSvc := services.NewMealCollectionService(mealSessionRepo, mealCardRepo, mealCollectionRepo, invoiceRepo, menuRepo, attendeeRepo)
-	mealCollectionHandler := handlers.NewMealCollectionHandler(mealCollectionSvc)
+	var mealCollectionIface interfaces.MealCollectionInterface = mealCollectionSvc
+	mealCollectionIface = loggermw.NewMealCollectionLoggerMiddleware(mealCollectionIface)
+	mealCollectionIface = telemetrymw.NewMealCollectionTelemetryMiddleware(mealCollectionIface)
+	mealCollectionHandler := handlers.NewMealCollectionHandler(mealCollectionIface)
 
-	branchHandler := handlers.NewBranchHandler(services.NewBranchService(branchRepo), services.NewPrinterService(branchRepo))
-	orgHandler := handlers.NewOrganizationHandler(backofficeOrgSvc)
+	branchSvc := services.NewBranchService(branchRepo)
+	var branchIface interfaces.BranchInterface = branchSvc
+	branchIface = loggermw.NewBranchLoggerMiddleware(branchIface)
+	branchIface = telemetrymw.NewBranchTelemetryMiddleware(branchIface)
+	// PrinterService has no logging/telemetry decorator (direct hardware I/O,
+	// outside the service-interface refactor) — passed to the handler
+	// alongside the decorated branch interface.
+	branchHandler := handlers.NewBranchHandler(branchIface, services.NewPrinterService(branchRepo))
+	orgHandler := handlers.NewOrganizationHandler(backofficeOrgIface)
 
-	venueHandler := handlers.NewVenueHandler(services.NewVenueService(venueRepo))
+	venueSvc := services.NewVenueService(venueRepo)
+	var venueIface interfaces.VenueInterface = venueSvc
+	venueIface = loggermw.NewVenueLoggerMiddleware(venueIface)
+	venueIface = telemetrymw.NewVenueTelemetryMiddleware(venueIface)
+	venueHandler := handlers.NewVenueHandler(venueIface)
 
 	reviewRepo := repository.NewReviewRepository()
-	reviewHandler := handlers.NewReviewHandler(services.NewReviewService(reviewRepo, bookingRepo))
+	reviewSvc := services.NewReviewService(reviewRepo, bookingRepo)
+	var reviewIface interfaces.ReviewInterface = reviewSvc
+	reviewIface = loggermw.NewReviewLoggerMiddleware(reviewIface)
+	reviewIface = telemetrymw.NewReviewTelemetryMiddleware(reviewIface)
+	reviewHandler := handlers.NewReviewHandler(reviewIface)
 
 	// Web user (website accounts)
 	webUserRepo := repository.NewWebUserRepository()
 	webUserAuthSvc := services.NewWebUserAuthService(webUserRepo, passwordPolicyService)
 	webUserAuthSvc.SetEmailService(emailService)
-	webUserAuthHandler := handlers.NewWebUserAuthHandler(webUserAuthSvc)
+	var webUserAuthIface interfaces.WebUserAuthInterface = webUserAuthSvc
+	webUserAuthIface = loggermw.NewWebUserAuthLoggerMiddleware(webUserAuthIface)
+	webUserAuthIface = telemetrymw.NewWebUserAuthTelemetryMiddleware(webUserAuthIface)
+	webUserAuthHandler := handlers.NewWebUserAuthHandler(webUserAuthIface)
 
 	// Corporate profile layer
 	corCompanyRepo := repository.NewCorCompanyRepository()
@@ -188,24 +276,40 @@ func main() {
 	corpGuestRepo = repository.NewCorporateGuestRepository()
 	corpBookingReqRepo = repository.NewCorporateBookingRequestRepository()
 	corProfileSvc := services.NewCorProfileService(corCompanyRepo, corBranchRepo, corProfileRepo, corpGuestRepo)
+	var corProfileIface interfaces.CorProfileInterface = corProfileSvc
+	corProfileIface = loggermw.NewCorProfileLoggerMiddleware(corProfileIface)
+	corProfileIface = telemetrymw.NewCorProfileTelemetryMiddleware(corProfileIface)
+
 	corpBookingReqSvc := services.NewCorporateBookingRequestService(corpBookingReqRepo, corpGuestRepo, corProfileSvc)
 	corpBookingReqSvc.SetWorkflowService(workflowService)
 	corpBookingReqSvc.SetVenueRepository(venueRepo)
 	corpBookingReqSvc.SetMenuRepository(menuRepo)   // resolve menu item names/prices for meals task display
 	corpBookingReqSvc.SetBookingService(bookingSvc) // approve auto-creates event/conference bookings
-	corProfileHandler := handlers.NewCorProfileHandler(corProfileSvc)
-	corpBookingReqHandler := handlers.NewCorporateBookingRequestHandler(corpBookingReqSvc)
+	var corpBookingReqIface interfaces.CorporateBookingRequestInterface = corpBookingReqSvc
+	corpBookingReqIface = loggermw.NewCorporateBookingRequestLoggerMiddleware(corpBookingReqIface)
+	corpBookingReqIface = telemetrymw.NewCorporateBookingRequestTelemetryMiddleware(corpBookingReqIface)
+
+	corProfileHandler := handlers.NewCorProfileHandler(corProfileIface)
+	corpBookingReqHandler := handlers.NewCorporateBookingRequestHandler(corpBookingReqIface)
 
 	// Individual booking requests
 	indvBookingReqRepo := repository.NewIndividualBookingRequestRepository()
 	indvBookingReqSvc := services.NewIndividualBookingRequestService(indvBookingReqRepo, roomRepo, bookingSvc)
 	indvBookingReqSvc.SetWorkflowService(workflowService)
-	indvBookingReqHandler := handlers.NewIndividualBookingRequestHandler(indvBookingReqSvc)
-	walkInBookingHandler := handlers.NewWalkInBookingHandler(indvBookingReqSvc, corpBookingReqSvc)
+	var indvBookingReqIface interfaces.IndividualBookingRequestInterface = indvBookingReqSvc
+	indvBookingReqIface = loggermw.NewIndividualBookingRequestLoggerMiddleware(indvBookingReqIface)
+	indvBookingReqIface = telemetrymw.NewIndividualBookingRequestTelemetryMiddleware(indvBookingReqIface)
+
+	indvBookingReqHandler := handlers.NewIndividualBookingRequestHandler(indvBookingReqIface)
+	walkInBookingHandler := handlers.NewWalkInBookingHandler(indvBookingReqIface, corpBookingReqIface)
 
 	// Wire the booking-request services back into the workflow so a terminal workflow
 	// outcome (final approve / reject) materialises or rejects the underlying request.
-	// Keys must match the TaskType set in each service's startWorkflow.
+	// Keys must match the TaskType set in each service's startWorkflow. Registered
+	// with the concrete services (BookingRequestApprover can't reference the
+	// interfaces package without an import cycle), so these calls bypass the
+	// logging/telemetry decorators — acceptable since it's an internal callback,
+	// not a handler-facing path.
 	workflowService.RegisterApprover("individual_booking", indvBookingReqSvc)
 	workflowService.RegisterApprover("corporate_booking", corpBookingReqSvc)
 

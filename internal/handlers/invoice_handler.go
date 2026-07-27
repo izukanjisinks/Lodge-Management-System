@@ -2,21 +2,21 @@ package handlers
 
 import (
 	"encoding/base64"
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type InvoiceHandler struct {
-	service *services.InvoiceService
+	service interfaces.InvoiceInterface
 }
 
-func NewInvoiceHandler(service *services.InvoiceService) *InvoiceHandler {
+func NewInvoiceHandler(service interfaces.InvoiceInterface) *InvoiceHandler {
 	return &InvoiceHandler{service: service}
 }
 
@@ -32,7 +32,7 @@ func (h *InvoiceHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invoices, total, err := h.service.List(orgID, branchID, status, clientType, pag.Page, pag.PageSize)
+	invoices, total, err := h.service.List(r.Context(), orgID, branchID, status, clientType, pag.Page, pag.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -54,7 +54,7 @@ func (h *InvoiceHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	inv, err := h.service.GetByID(id, orgID)
+	inv, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -71,7 +71,7 @@ func (h *InvoiceHandler) GetByBookingID(w http.ResponseWriter, r *http.Request) 
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	inv, err := h.service.GetByBookingID(bookingID, orgID)
+	inv, err := h.service.GetByBookingID(r.Context(), bookingID, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -114,7 +114,7 @@ func (h *InvoiceHandler) SendEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.SendInvoiceEmail(id, orgID, pdf); err != nil {
+	if err := h.service.SendInvoiceEmail(r.Context(), id, orgID, pdf); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -144,7 +144,7 @@ func (h *InvoiceHandler) SendPaymentConfirmation(w http.ResponseWriter, r *http.
 	}
 	orgID, _ := middleware.GetOrgIDFromContext(r.Context())
 
-	if err := h.service.SendPaymentConfirmationEmail(id, orgID); err != nil {
+	if err := h.service.SendPaymentConfirmationEmail(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -167,7 +167,7 @@ func (h *InvoiceHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	req.ParsePaidDate()
 
-	inv, err := h.service.UpdateStatus(id, orgID, &req)
+	inv, err := h.service.UpdateStatus(r.Context(), id, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -191,7 +191,7 @@ func (h *InvoiceHandler) PostBookingCharge(w http.ResponseWriter, r *http.Reques
 		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	inv, err := h.service.PostBookingCharge(bookingID, orgID, &req)
+	inv, err := h.service.PostBookingCharge(r.Context(), bookingID, orgID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

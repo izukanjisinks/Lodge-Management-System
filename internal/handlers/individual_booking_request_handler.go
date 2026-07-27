@@ -1,21 +1,21 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type IndividualBookingRequestHandler struct {
-	service *services.IndividualBookingRequestService
+	service interfaces.IndividualBookingRequestInterface
 }
 
-func NewIndividualBookingRequestHandler(service *services.IndividualBookingRequestService) *IndividualBookingRequestHandler {
+func NewIndividualBookingRequestHandler(service interfaces.IndividualBookingRequestInterface) *IndividualBookingRequestHandler {
 	return &IndividualBookingRequestHandler{service: service}
 }
 
@@ -42,7 +42,7 @@ func (h *IndividualBookingRequestHandler) SubmitAccommodation(w http.ResponseWri
 		return
 	}
 
-	result, err := h.service.Submit(guestID, &req)
+	result, err := h.service.Submit(r.Context(), guestID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -71,7 +71,7 @@ func (h *IndividualBookingRequestHandler) SubmitEvent(w http.ResponseWriter, r *
 		return
 	}
 
-	result, err := h.service.SubmitEvent(guestID, &req)
+	result, err := h.service.SubmitEvent(r.Context(), guestID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -100,7 +100,7 @@ func (h *IndividualBookingRequestHandler) SubmitMeal(w http.ResponseWriter, r *h
 		return
 	}
 
-	result, err := h.service.SubmitMeal(guestID, &req)
+	result, err := h.service.SubmitMeal(r.Context(), guestID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -125,7 +125,7 @@ func (h *IndividualBookingRequestHandler) Submit(w http.ResponseWriter, r *http.
 		return
 	}
 
-	result, err := h.service.Submit(webUserID, &req)
+	result, err := h.service.Submit(r.Context(), webUserID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -143,7 +143,7 @@ func (h *IndividualBookingRequestHandler) ListForWebUser(w http.ResponseWriter, 
 	}
 
 	p := utils.ParsePagination(r)
-	requests, total, err := h.service.ListForWebUser(webUserID, p.Page, p.PageSize)
+	requests, total, err := h.service.ListForWebUser(r.Context(), webUserID, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -171,7 +171,7 @@ func (h *IndividualBookingRequestHandler) GetForWebUser(w http.ResponseWriter, r
 		return
 	}
 
-	req, err := h.service.GetForWebUser(id, webUserID)
+	req, err := h.service.GetForWebUser(r.Context(), id, webUserID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -194,7 +194,7 @@ func (h *IndividualBookingRequestHandler) CancelForWebUser(w http.ResponseWriter
 		return
 	}
 
-	if err := h.service.CancelForWebUser(id, webUserID); err != nil {
+	if err := h.service.CancelForWebUser(r.Context(), id, webUserID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -210,7 +210,7 @@ func (h *IndividualBookingRequestHandler) List(w http.ResponseWriter, r *http.Re
 	p := utils.ParsePagination(r)
 	status := r.URL.Query().Get("status")
 
-	requests, total, err := h.service.List(orgID, status, p.Page, p.PageSize)
+	requests, total, err := h.service.List(r.Context(), orgID, status, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -233,7 +233,7 @@ func (h *IndividualBookingRequestHandler) GetByID(w http.ResponseWriter, r *http
 		return
 	}
 
-	req, err := h.service.GetByID(id, orgID)
+	req, err := h.service.GetByID(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -251,7 +251,7 @@ func (h *IndividualBookingRequestHandler) Approve(w http.ResponseWriter, r *http
 		return
 	}
 
-	booking, err := h.service.Approve(id, orgID)
+	booking, err := h.service.Approve(r.Context(), id, orgID)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -269,7 +269,7 @@ func (h *IndividualBookingRequestHandler) Reject(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := h.service.Reject(id, orgID); err != nil {
+	if err := h.service.Reject(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -286,7 +286,7 @@ func (h *IndividualBookingRequestHandler) Cancel(w http.ResponseWriter, r *http.
 		return
 	}
 
-	if err := h.service.Cancel(id, orgID); err != nil {
+	if err := h.service.Cancel(r.Context(), id, orgID); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

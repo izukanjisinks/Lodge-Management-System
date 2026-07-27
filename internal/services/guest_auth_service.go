@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -26,7 +27,7 @@ func (s *GuestAuthService) SetEmailService(svc *email.EmailService) {
 	s.emailService = svc
 }
 
-func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.Guest, error) {
+func (s *GuestAuthService) Register(ctx context.Context, req *models.GuestRegisterRequest) (*models.Guest, error) {
 	if req.FullName == "" || req.Email == "" || req.Password == "" {
 		return nil, errors.New("full_name, email, and password are required")
 	}
@@ -68,7 +69,7 @@ func (s *GuestAuthService) Register(req *models.GuestRegisterRequest) (*models.G
 	return guest, nil
 }
 
-func (s *GuestAuthService) Login(emailAddr, password string) (*models.Guest, string, error) {
+func (s *GuestAuthService) Login(ctx context.Context, emailAddr, password string) (*models.Guest, string, error) {
 	guest, err := s.guestRepo.GetByEmail(emailAddr)
 	if err != nil {
 		return nil, "", errors.New("invalid credentials")
@@ -90,13 +91,13 @@ func (s *GuestAuthService) Login(emailAddr, password string) (*models.Guest, str
 	return guest, token, nil
 }
 
-func (s *GuestAuthService) GetByID(id uuid.UUID) (*models.Guest, error) {
+func (s *GuestAuthService) GetByID(ctx context.Context, id uuid.UUID) (*models.Guest, error) {
 	return s.guestRepo.GetByID(id)
 }
 
 // ResetPassword generates a new password for the guest and emails it to them.
 // Always returns nil to avoid leaking whether the email exists.
-func (s *GuestAuthService) ResetPassword(emailAddr string) error {
+func (s *GuestAuthService) ResetPassword(ctx context.Context, emailAddr string) error {
 	fmt.Printf("[ResetPassword] request for email: %s\n", emailAddr)
 
 	guest, err := s.guestRepo.GetByEmail(emailAddr)
@@ -140,7 +141,7 @@ func (s *GuestAuthService) ResetPassword(emailAddr string) error {
 	return nil
 }
 
-func (s *GuestAuthService) UpdateProfile(id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {
+func (s *GuestAuthService) UpdateProfile(ctx context.Context, id uuid.UUID, req *models.GuestUpdateRequest) (*models.Guest, error) {
 	guest, err := s.guestRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("guest not found")

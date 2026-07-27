@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -70,7 +71,7 @@ func (s *BookingService) SetClientRepository(repo *repository.ClientRepository) 
 // submission. The full envelope is stored in metadata and decoded later at workflow
 // approval to materialise children (rooms / event sessions / meal orders). No child
 // rows or inventory are created here — a pending booking holds nothing until approved.
-func (s *BookingService) SubmitPending(in *models.PendingBookingInput) (*models.Booking, error) {
+func (s *BookingService) SubmitPending(ctx context.Context, in *models.PendingBookingInput) (*models.Booking, error) {
 	if in.BookerName == "" {
 		return nil, errors.New("booker_name is required")
 	}
@@ -99,20 +100,20 @@ func (s *BookingService) SubmitPending(in *models.PendingBookingInput) (*models.
 }
 
 // GetForApproval loads a booking by ID for the workflow approval/materialise paths.
-func (s *BookingService) GetForApproval(id, orgID uuid.UUID) (*models.Booking, error) {
+func (s *BookingService) GetForApproval(ctx context.Context, id, orgID uuid.UUID) (*models.Booking, error) {
 	return s.bookingRepo.GetByID(id, orgID)
 }
 
 // GetByIDUnscoped loads a booking by ID without org scoping (used by web-user reads
 // that authorise via web_user_id ownership instead).
-func (s *BookingService) GetByIDUnscoped(id uuid.UUID) (*models.Booking, error) {
+func (s *BookingService) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*models.Booking, error) {
 	return s.bookingRepo.GetByIDUnscoped(id)
 }
 
 // CancelForWebUser cancels a pending booking owned by the given web user. Only the
 // owner can cancel, and only while still pending. Returns the booking's org ID so the
 // caller can cancel the associated workflow.
-func (s *BookingService) CancelForWebUser(id, webUserID uuid.UUID) (uuid.UUID, error) {
+func (s *BookingService) CancelForWebUser(ctx context.Context, id, webUserID uuid.UUID) (uuid.UUID, error) {
 	b, err := s.bookingRepo.GetByIDUnscoped(id)
 	if err != nil {
 		return uuid.Nil, errors.New("booking not found")
@@ -123,7 +124,7 @@ func (s *BookingService) CancelForWebUser(id, webUserID uuid.UUID) (uuid.UUID, e
 	if b.Status != models.BookingStatusPending {
 		return uuid.Nil, errors.New("only pending bookings can be cancelled")
 	}
-	if err := s.SetStatus(id, b.OrgID, models.BookingStatusCancelled, models.BookingStatusPending); err != nil {
+	if err := s.SetStatus(ctx, id, b.OrgID, models.BookingStatusCancelled, models.BookingStatusPending); err != nil {
 		return uuid.Nil, err
 	}
 	return b.OrgID, nil
@@ -132,7 +133,7 @@ func (s *BookingService) CancelForWebUser(id, webUserID uuid.UUID) (uuid.UUID, e
 // SetStatus transitions a booking to newStatus, but only if it is currently in
 // fromStatus (an optimistic guard so a reject can't clobber an already-confirmed
 // booking). Used by the reject/cancel paths on pending bookings.
-func (s *BookingService) SetStatus(id, orgID uuid.UUID, newStatus, fromStatus string) error {
+func (s *BookingService) SetStatus(ctx context.Context, id, orgID uuid.UUID, newStatus, fromStatus string) error {
 	b, err := s.bookingRepo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("booking not found")
@@ -159,12 +160,12 @@ func (s *BookingService) generateInvoice(bookingID, orgID uuid.UUID) {
 	if s.invoiceSvc == nil {
 		return
 	}
-	_ = s.invoiceSvc.GenerateForBooking(bookingID, orgID)
+	_ = s.invoiceSvc.GenerateForBooking(context.Background(), bookingID, orgID)
 }
 
 // ─── Individual booking ───────────────────────────────────────────────────────
 
-func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateIndividualBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
+func (s *BookingService) CreateIndividual(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.CreateIndividualBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
 	if req.BookerName == "" {
 		return nil, errors.New("booker_name is required")
 	}
@@ -278,7 +279,7 @@ func (s *BookingService) CreateIndividual(orgID uuid.UUID, branchID *uuid.UUID, 
 // that may contain multiple rooms. Each slot in rooms maps to one attendant (by
 // slot.AttendantIdx into attendants); if the attendant list is shorter than the
 // room list the booker details are used as a fallback for unmatched slots.
-func (s *BookingService) CreateIndividualRooms(
+func (s *BookingService) CreateIndividualRooms(ctx context.Context,
 	orgID uuid.UUID,
 	branchID *uuid.UUID,
 	promoteID uuid.UUID,
@@ -426,7 +427,7 @@ func (s *BookingService) CreateIndividualRooms(
 // booking: it creates the bookings spine (booker_type individual) then delegates
 // to the shared multi-session engine to create the booking_events + attendees.
 // branchID is the lodge branch the first session's venue sits at.
-func (s *BookingService) CreateIndividualEvent(
+func (s *BookingService) CreateIndividualEvent(ctx context.Context,
 	orgID uuid.UUID,
 	webUserID *uuid.UUID,
 	promoteID *uuid.UUID,
@@ -492,7 +493,7 @@ func (s *BookingService) CreateIndividualEvent(
 // booking, materialising children from the envelope stored in the booking's metadata.
 // It builds a CorporateBookingRequest shim from the booking so the shared materialise
 // body (which predates single-phase) keeps working unchanged.
-func (s *BookingService) CreateFromBooking(orgID uuid.UUID, branchID *uuid.UUID, bookingID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+func (s *BookingService) CreateFromBooking(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, bookingID uuid.UUID, matReq *models.MaterialiseRequest) (*models.Booking, error) {
 	b, err := s.bookingRepo.GetByID(bookingID, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
@@ -522,7 +523,7 @@ func (s *BookingService) CreateFromBooking(orgID uuid.UUID, branchID *uuid.UUID,
 // directly into a confirmed booking + room assignments, without a pending state.
 // The caller supplies the resolved company/profile IDs and the per-attendant room
 // assignments (matReq). Used by the staff walk-in path.
-func (s *BookingService) CreateCorporateAccommodation(orgID uuid.UUID, branchID *uuid.UUID, corProfileID, companyID *uuid.UUID, envelope *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
+func (s *BookingService) CreateCorporateAccommodation(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, corProfileID, companyID *uuid.UUID, envelope *models.SubmitAccommodationRequest, matReq *models.MaterialiseRequest) (*models.Booking, error) {
 	payloadBytes, _ := json.Marshal(envelope)
 	req := &models.CorporateBookingRequest{
 		OrgID:           orgID,
@@ -1052,7 +1053,7 @@ func (s *BookingService) materialiseEventSessions(
 // CreateIndividualMeal materialises an approved individual meal request into a
 // bookings record + one order per session (per-attendant for detailed mode,
 // per-session for headcount/buffet mode).
-func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
+func (s *BookingService) CreateIndividualMeal(ctx context.Context, orgID uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest, metadata json.RawMessage) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -1104,7 +1105,7 @@ func (s *BookingService) CreateIndividualMeal(orgID uuid.UUID, webUserID *uuid.U
 // into a confirmed booking + event sessions, without going through the pending
 // state. Mirrors CreateCorporateMeal for the event session engine. Used by the
 // staff walk-in path where no approval step is needed.
-func (s *BookingService) CreateCorporateEvent(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitEventBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateCorporateEvent(ctx context.Context, orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitEventBookingRequest) (*models.Booking, error) {
 	if envelope.Event == nil || len(envelope.Event.Sessions) == 0 {
 		return nil, errors.New("at least one event session is required")
 	}
@@ -1168,7 +1169,7 @@ func (s *BookingService) CreateCorporateEvent(orgID uuid.UUID, corProfileID, com
 
 // CreateCorporateMeal materialises an approved corporate meal request (Flow B)
 // into a bookings record + orders using the same session engine.
-func (s *BookingService) CreateCorporateMeal(orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
+func (s *BookingService) CreateCorporateMeal(ctx context.Context, orgID uuid.UUID, corProfileID, companyID *uuid.UUID, webUserID *uuid.UUID, promoteID *uuid.UUID, envelope *models.SubmitMealBookingRequest) (*models.Booking, error) {
 	tx, err := s.bookingRepo.Begin()
 	if err != nil {
 		return nil, err
@@ -1440,7 +1441,7 @@ func corporateTypeFromBooking(t string) string {
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
-func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
+func (s *BookingService) GetByID(ctx context.Context, id, orgID uuid.UUID) (*models.Booking, error) {
 	b, err := s.bookingRepo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("booking not found")
@@ -1451,15 +1452,15 @@ func (s *BookingService) GetByID(id, orgID uuid.UUID) (*models.Booking, error) {
 	return b, nil
 }
 
-func (s *BookingService) List(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
+func (s *BookingService) List(ctx context.Context, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time, page, pageSize int) ([]models.Booking, int, error) {
 	return s.bookingRepo.List(orgID, bookerType, bookingType, status, from, to, page, pageSize)
 }
 
-func (s *BookingService) ListForExport(orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) ([]models.Booking, error) {
+func (s *BookingService) ListForExport(ctx context.Context, orgID uuid.UUID, bookerType, bookingType, status string, from, to *time.Time) ([]models.Booking, error) {
 	return s.bookingRepo.ListForExport(orgID, bookerType, bookingType, status, from, to)
 }
 
-func (s *BookingService) ListForWebUser(webUserID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
+func (s *BookingService) ListForWebUser(ctx context.Context, webUserID uuid.UUID, page, pageSize int) ([]models.Booking, int, error) {
 	return s.bookingRepo.ListByWebUserID(webUserID, page, pageSize)
 }
 
@@ -1488,19 +1489,19 @@ func (s *BookingService) updateStatus(id, orgID uuid.UUID, newStatus string) err
 	return fmt.Errorf("cannot transition booking from %s to %s", b.Status, newStatus)
 }
 
-func (s *BookingService) CheckIn(id, orgID uuid.UUID) error {
+func (s *BookingService) CheckIn(ctx context.Context, id, orgID uuid.UUID) error {
 	return s.updateStatus(id, orgID, models.BookingStatusCheckedIn)
 }
 
-func (s *BookingService) CheckOut(id, orgID uuid.UUID) error {
+func (s *BookingService) CheckOut(ctx context.Context, id, orgID uuid.UUID) error {
 	return s.updateStatus(id, orgID, models.BookingStatusCheckedOut)
 }
 
-func (s *BookingService) Cancel(id, orgID uuid.UUID) error {
+func (s *BookingService) Cancel(ctx context.Context, id, orgID uuid.UUID) error {
 	return s.updateStatus(id, orgID, models.BookingStatusCancelled)
 }
 
-func (s *BookingService) UpdateStatus(id, orgID uuid.UUID, newStatus string) error {
+func (s *BookingService) UpdateStatus(ctx context.Context, id, orgID uuid.UUID, newStatus string) error {
 	return s.updateStatus(id, orgID, newStatus)
 }
 
@@ -1523,7 +1524,7 @@ func (s *BookingService) checkRoomAssignable(roomID, bookingID uuid.UUID, checkI
 	return nil
 }
 
-func (s *BookingService) AssignRoom(id, orgID uuid.UUID, req *models.CreateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
+func (s *BookingService) AssignRoom(ctx context.Context, id, orgID uuid.UUID, req *models.CreateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -1570,14 +1571,14 @@ func (s *BookingService) AssignRoom(id, orgID uuid.UUID, req *models.CreateRoomA
 	return assignment, nil
 }
 
-func (s *BookingService) ListAssignments(id, orgID uuid.UUID) ([]models.BookingRoomAssignment, error) {
+func (s *BookingService) ListAssignments(ctx context.Context, id, orgID uuid.UUID) ([]models.BookingRoomAssignment, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
 	return s.assignmentRepo.ListByBookingID(id)
 }
 
-func (s *BookingService) UpdateAssignment(id, orgID, assignmentID uuid.UUID, req *models.UpdateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
+func (s *BookingService) UpdateAssignment(ctx context.Context, id, orgID, assignmentID uuid.UUID, req *models.UpdateRoomAssignmentRequest) (*models.BookingRoomAssignment, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -1607,14 +1608,14 @@ func (s *BookingService) UpdateAssignment(id, orgID, assignmentID uuid.UUID, req
 	return s.assignmentRepo.Update(assignmentID, id, req)
 }
 
-func (s *BookingService) RemoveAssignment(id, orgID, assignmentID uuid.UUID) error {
+func (s *BookingService) RemoveAssignment(ctx context.Context, id, orgID, assignmentID uuid.UUID) error {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return errors.New("booking not found")
 	}
 	return s.assignmentRepo.Delete(assignmentID, id)
 }
 
-func (s *BookingService) CheckInAssignment(id, orgID, assignmentID uuid.UUID) error {
+func (s *BookingService) CheckInAssignment(ctx context.Context, id, orgID, assignmentID uuid.UUID) error {
 	b, err := s.bookingRepo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("booking not found")
@@ -1654,7 +1655,7 @@ func (s *BookingService) CheckInAssignment(id, orgID, assignmentID uuid.UUID) er
 	return tx.Commit()
 }
 
-func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) error {
+func (s *BookingService) CheckOutAssignment(ctx context.Context, id, orgID, assignmentID uuid.UUID) error {
 	b, err := s.bookingRepo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("booking not found")
@@ -1702,7 +1703,7 @@ func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) e
 	// actual nights stayed. Best-effort and post-commit: the actual checkout must
 	// be visible, and a regeneration failure must not undo the checkout itself.
 	if bookingComplete && s.invoiceSvc != nil {
-		_ = s.invoiceSvc.RegenerateRoomInvoice(id, orgID)
+		_ = s.invoiceSvc.RegenerateRoomInvoice(context.Background(), id, orgID)
 	}
 
 	return nil
@@ -1710,14 +1711,14 @@ func (s *BookingService) CheckOutAssignment(id, orgID, assignmentID uuid.UUID) e
 
 // ─── Attendees ────────────────────────────────────────────────────────────────
 
-func (s *BookingService) ListAttendees(id, orgID uuid.UUID) ([]models.BookingAttendee, error) {
+func (s *BookingService) ListAttendees(ctx context.Context, id, orgID uuid.UUID) ([]models.BookingAttendee, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
 	return s.attendeeRepo.ListByBookingID(id)
 }
 
-func (s *BookingService) AddAttendee(id, orgID uuid.UUID, req *models.CreateAttendeeRequest) (*models.BookingAttendee, error) {
+func (s *BookingService) AddAttendee(ctx context.Context, id, orgID uuid.UUID, req *models.CreateAttendeeRequest) (*models.BookingAttendee, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
@@ -1753,14 +1754,14 @@ func (s *BookingService) AddAttendee(id, orgID uuid.UUID, req *models.CreateAtte
 	return attendee, nil
 }
 
-func (s *BookingService) UpdateAttendee(id, orgID, attendeeID uuid.UUID, req *models.UpdateAttendeeRequest) (*models.BookingAttendee, error) {
+func (s *BookingService) UpdateAttendee(ctx context.Context, id, orgID, attendeeID uuid.UUID, req *models.UpdateAttendeeRequest) (*models.BookingAttendee, error) {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return nil, errors.New("booking not found")
 	}
 	return s.attendeeRepo.Update(attendeeID, id, req)
 }
 
-func (s *BookingService) RemoveAttendee(id, orgID, attendeeID uuid.UUID) error {
+func (s *BookingService) RemoveAttendee(ctx context.Context, id, orgID, attendeeID uuid.UUID) error {
 	if _, err := s.bookingRepo.GetByID(id, orgID); err != nil {
 		return errors.New("booking not found")
 	}
@@ -1769,15 +1770,15 @@ func (s *BookingService) RemoveAttendee(id, orgID, attendeeID uuid.UUID) error {
 
 // ─── Overdue (nightly job) ────────────────────────────────────────────────────
 
-func (s *BookingService) FindOverdueCheckouts(orgIDs []uuid.UUID) ([]repository.OverdueBookingRef, error) {
+func (s *BookingService) FindOverdueCheckouts(ctx context.Context, orgIDs []uuid.UUID) ([]repository.OverdueBookingRef, error) {
 	return s.bookingRepo.FindOverdueCheckouts(orgIDs)
 }
 
-func (s *BookingService) MarkOverstayed(id, orgID uuid.UUID) error {
+func (s *BookingService) MarkOverstayed(ctx context.Context, id, orgID uuid.UUID) error {
 	return s.bookingRepo.MarkOverstayed(id, orgID)
 }
 
-func (s *BookingService) RecalculateTotal(id, orgID uuid.UUID) error {
+func (s *BookingService) RecalculateTotal(ctx context.Context, id, orgID uuid.UUID) error {
 	total, err := s.assignmentRepo.SumRoomCosts(id)
 	if err != nil {
 		return err

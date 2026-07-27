@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
 
@@ -16,7 +17,7 @@ func NewDashboardService(repo *repository.DashboardRepository) *DashboardService
 }
 
 // GetSummary backs the always-loaded top 3 stat cards.
-func (s *DashboardService) GetSummary(orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardSummary, error) {
+func (s *DashboardService) GetSummary(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardSummary, error) {
 	summary, err := s.repo.Summary(orgID, branchID)
 	if err != nil {
 		return nil, err
@@ -25,7 +26,7 @@ func (s *DashboardService) GetSummary(orgID uuid.UUID, branchID *uuid.UUID) (*mo
 }
 
 // GetBookings backs the Bookings tab (the default tab).
-func (s *DashboardService) GetBookings(orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardBookings, error) {
+func (s *DashboardService) GetBookings(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardBookings, error) {
 	overstaying, err := s.repo.OverstayingGuests(orgID, branchID)
 	if err != nil {
 		return nil, err
@@ -57,7 +58,7 @@ func (s *DashboardService) GetBookings(orgID uuid.UUID, branchID *uuid.UUID) (*m
 }
 
 // GetOrders backs the Orders tab.
-func (s *DashboardService) GetOrders(orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardOrders, error) {
+func (s *DashboardService) GetOrders(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardOrders, error) {
 	kitchenBacklog, err := s.repo.KitchenBacklog(orgID, branchID)
 	if err != nil {
 		return nil, err
@@ -89,7 +90,7 @@ func (s *DashboardService) GetOrders(orgID uuid.UUID, branchID *uuid.UUID) (*mod
 }
 
 // GetInvoices backs the Invoices tab.
-func (s *DashboardService) GetInvoices(orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardInvoices, error) {
+func (s *DashboardService) GetInvoices(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID) (*models.DashboardInvoices, error) {
 	invoices, err := s.repo.InvoicesSummary(orgID, branchID)
 	if err != nil {
 		return nil, err

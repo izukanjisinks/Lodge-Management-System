@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"lodge-system/internal/models"
@@ -41,7 +42,7 @@ var validSessionStatus = map[string]bool{
 	models.MealSessionStatusClosed: true, models.MealSessionStatusCancelled: true,
 }
 
-func (s *MealCollectionService) CreateSession(orgID uuid.UUID, branchID *uuid.UUID, req *models.MealSessionCreateRequest) (*models.ResidentMealSession, error) {
+func (s *MealCollectionService) CreateSession(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, req *models.MealSessionCreateRequest) (*models.ResidentMealSession, error) {
 	if !validMealPeriods[req.MealPeriod] {
 		return nil, errors.New("invalid meal period")
 	}
@@ -73,7 +74,7 @@ func (s *MealCollectionService) CreateSession(orgID uuid.UUID, branchID *uuid.UU
 	return s.sessions.GetByID(session.ID, orgID)
 }
 
-func (s *MealCollectionService) GetSession(id, orgID uuid.UUID) (*models.ResidentMealSession, error) {
+func (s *MealCollectionService) GetSession(ctx context.Context, id, orgID uuid.UUID) (*models.ResidentMealSession, error) {
 	sess, err := s.sessions.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("meal session not found")
@@ -81,7 +82,7 @@ func (s *MealCollectionService) GetSession(id, orgID uuid.UUID) (*models.Residen
 	return sess, nil
 }
 
-func (s *MealCollectionService) ListSessions(orgID uuid.UUID, branchID *uuid.UUID, status, mealPeriod string, page, pageSize int) (*models.PaginatedMealSessions, error) {
+func (s *MealCollectionService) ListSessions(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, status, mealPeriod string, page, pageSize int) (*models.PaginatedMealSessions, error) {
 	data, total, err := s.sessions.List(orgID, branchID, status, mealPeriod, page, pageSize)
 	if err != nil {
 		return nil, err
@@ -89,7 +90,7 @@ func (s *MealCollectionService) ListSessions(orgID uuid.UUID, branchID *uuid.UUI
 	return &models.PaginatedMealSessions{Data: data, Page: page, PageSize: pageSize, Total: total}, nil
 }
 
-func (s *MealCollectionService) UpdateSession(id, orgID uuid.UUID, req *models.MealSessionUpdateRequest) (*models.ResidentMealSession, error) {
+func (s *MealCollectionService) UpdateSession(ctx context.Context, id, orgID uuid.UUID, req *models.MealSessionUpdateRequest) (*models.ResidentMealSession, error) {
 	if req.MealPeriod != nil && !validMealPeriods[*req.MealPeriod] {
 		return nil, errors.New("invalid meal period")
 	}
@@ -104,7 +105,7 @@ func (s *MealCollectionService) UpdateSession(id, orgID uuid.UUID, req *models.M
 	return s.sessions.GetByID(id, orgID)
 }
 
-func (s *MealCollectionService) UpdateSessionStatus(id, orgID uuid.UUID, status string) (*models.ResidentMealSession, error) {
+func (s *MealCollectionService) UpdateSessionStatus(ctx context.Context, id, orgID uuid.UUID, status string) (*models.ResidentMealSession, error) {
 	if !validSessionStatus[status] {
 		return nil, errors.New("invalid status")
 	}
@@ -114,7 +115,7 @@ func (s *MealCollectionService) UpdateSessionStatus(id, orgID uuid.UUID, status 
 	return s.sessions.GetByID(id, orgID)
 }
 
-func (s *MealCollectionService) UpdateGracePeriod(id, orgID uuid.UUID, minutes int) (*models.ResidentMealSession, error) {
+func (s *MealCollectionService) UpdateGracePeriod(ctx context.Context, id, orgID uuid.UUID, minutes int) (*models.ResidentMealSession, error) {
 	if minutes < 0 {
 		return nil, errors.New("grace period must be >= 0")
 	}
@@ -124,13 +125,13 @@ func (s *MealCollectionService) UpdateGracePeriod(id, orgID uuid.UUID, minutes i
 	return s.sessions.GetByID(id, orgID)
 }
 
-func (s *MealCollectionService) DeleteSession(id, orgID uuid.UUID) error {
+func (s *MealCollectionService) DeleteSession(ctx context.Context, id, orgID uuid.UUID) error {
 	if err := s.sessions.Delete(id, orgID); err != nil {
 		return notFoundOr(err, "meal session not found")
 	}
 	return nil
 }
 
-func (s *MealCollectionService) ListCollections(sessionID, orgID uuid.UUID) ([]models.MealCollectionLogEntry, error) {
+func (s *MealCollectionService) ListCollections(ctx context.Context, sessionID, orgID uuid.UUID) ([]models.MealCollectionLogEntry, error) {
 	return s.collections.ListBySession(sessionID, orgID)
 }

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,7 +14,7 @@ import (
 
 // ─── Current stay ─────────────────────────────────────────────────────────────
 
-func (s *MealCollectionService) GetCurrentStay(orgID, roomID uuid.UUID) (*models.CurrentStay, error) {
+func (s *MealCollectionService) GetCurrentStay(ctx context.Context, orgID, roomID uuid.UUID) (*models.CurrentStay, error) {
 	stay, err := s.collections.GetCurrentStay(orgID, roomID)
 	if err != nil {
 		return nil, err
@@ -29,7 +30,7 @@ func (s *MealCollectionService) GetCurrentStay(orgID, roomID uuid.UUID) (*models
 // Collect resolves the scanned/typed input to a resident, gates on the session
 // being open (within grace), posts a buffet charge to the room's booking invoice,
 // and logs it. Idempotent on idempotency_key.
-func (s *MealCollectionService) Collect(orgID, sessionID uuid.UUID, staffID uuid.UUID, staffName string, req *models.MealCollectRequest) (*models.MealCollectionResult, error) {
+func (s *MealCollectionService) Collect(ctx context.Context, orgID, sessionID uuid.UUID, staffID uuid.UUID, staffName string, req *models.MealCollectRequest) (*models.MealCollectionResult, error) {
 	if req.Input == "" {
 		return nil, errors.New("input is required")
 	}

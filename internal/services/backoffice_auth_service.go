@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -25,11 +26,11 @@ func (s *BackofficeAuthService) SetEmailService(svc *email.EmailService) {
 	s.emailService = svc
 }
 
-func (s *BackofficeAuthService) GetByID(id uuid.UUID) (*models.BackofficeUser, error) {
+func (s *BackofficeAuthService) GetByID(ctx context.Context, id uuid.UUID) (*models.BackofficeUser, error) {
 	return s.repo.GetByID(id)
 }
 
-func (s *BackofficeAuthService) Login(emailAddr, password string) (*models.BackofficeUser, string, error) {
+func (s *BackofficeAuthService) Login(ctx context.Context, emailAddr, password string) (*models.BackofficeUser, string, error) {
 	user, err := s.repo.GetByEmail(emailAddr)
 	if err != nil {
 		return nil, "", errors.New("invalid credentials")
@@ -51,7 +52,7 @@ func (s *BackofficeAuthService) Login(emailAddr, password string) (*models.Backo
 	return user, token, nil
 }
 
-func (s *BackofficeAuthService) ChangePassword(id uuid.UUID, currentPassword, newPassword string) error {
+func (s *BackofficeAuthService) ChangePassword(ctx context.Context, id uuid.UUID, currentPassword, newPassword string) error {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -71,7 +72,7 @@ func (s *BackofficeAuthService) ChangePassword(id uuid.UUID, currentPassword, ne
 	return s.repo.Update(user)
 }
 
-func (s *BackofficeAuthService) ResetPassword(id uuid.UUID) error {
+func (s *BackofficeAuthService) ResetPassword(ctx context.Context, id uuid.UUID) error {
 	user, err := s.repo.GetByID(id)
 	if err != nil {
 		return errors.New("user not found")

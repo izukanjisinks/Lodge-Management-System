@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -39,15 +40,15 @@ func (s *BackofficeOrganizationService) SetEmailService(svc *email.EmailService)
 	s.emailService = svc
 }
 
-func (s *BackofficeOrganizationService) List() ([]models.Organization, error) {
+func (s *BackofficeOrganizationService) List(ctx context.Context) ([]models.Organization, error) {
 	return s.orgRepo.List()
 }
 
-func (s *BackofficeOrganizationService) GetByID(id uuid.UUID) (*models.Organization, error) {
+func (s *BackofficeOrganizationService) GetByID(ctx context.Context, id uuid.UUID) (*models.Organization, error) {
 	return s.orgRepo.GetByID(id)
 }
 
-func (s *BackofficeOrganizationService) Update(id uuid.UUID, req models.OrgDetails) (*models.Organization, error) {
+func (s *BackofficeOrganizationService) Update(ctx context.Context, id uuid.UUID, req models.OrgDetails) (*models.Organization, error) {
 	org, err := s.orgRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("organization not found")
@@ -94,7 +95,7 @@ func (s *BackofficeOrganizationService) Update(id uuid.UUID, req models.OrgDetai
 	return s.orgRepo.GetByID(id)
 }
 
-func (s *BackofficeOrganizationService) ToggleStatus(id uuid.UUID, isActive bool) (*models.Organization, error) {
+func (s *BackofficeOrganizationService) ToggleStatus(ctx context.Context, id uuid.UUID, isActive bool) (*models.Organization, error) {
 	org, err := s.orgRepo.GetByID(id)
 	if err != nil {
 		return nil, errors.New("organization not found")
@@ -106,13 +107,13 @@ func (s *BackofficeOrganizationService) ToggleStatus(id uuid.UUID, isActive bool
 	return s.orgRepo.GetByID(id)
 }
 
-func (s *BackofficeOrganizationService) Delete(id uuid.UUID) error {
+func (s *BackofficeOrganizationService) Delete(ctx context.Context, id uuid.UUID) error {
 	return s.orgRepo.Delete(id)
 }
 
 // Provision creates an organization and its first admin user in a single transaction.
 // The admin password is randomly generated and emailed to the admin.
-func (s *BackofficeOrganizationService) Provision(req models.ProvisionOrgRequest) (*models.Organization, *models.User, error) {
+func (s *BackofficeOrganizationService) Provision(ctx context.Context, req models.ProvisionOrgRequest) (*models.Organization, *models.User, error) {
 	if req.Organization.Name == "" {
 		return nil, nil, errors.New("organization name is required")
 	}

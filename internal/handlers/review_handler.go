@@ -1,19 +1,19 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
 
 type ReviewHandler struct {
-	service *services.ReviewService
+	service interfaces.ReviewInterface
 }
 
-func NewReviewHandler(service *services.ReviewService) *ReviewHandler {
+func NewReviewHandler(service interfaces.ReviewInterface) *ReviewHandler {
 	return &ReviewHandler{service: service}
 }
 
@@ -31,7 +31,7 @@ func (h *ReviewHandler) Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	review, err := h.service.Submit(user.UserID, &req)
+	review, err := h.service.Submit(r.Context(), user.UserID, &req)
 	if err != nil {
 		switch err.Error() {
 		case "forbidden":
@@ -47,7 +47,7 @@ func (h *ReviewHandler) Submit(w http.ResponseWriter, r *http.Request) {
 
 // GetSummary handles GET /api/v1/reviews/summary
 func (h *ReviewHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
-	summary, err := h.service.GetSummary()
+	summary, err := h.service.GetSummary(r.Context())
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to load rating summary")
 		return

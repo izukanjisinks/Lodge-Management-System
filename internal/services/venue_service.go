@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -18,7 +19,7 @@ func NewVenueService(repo *repository.VenueRepository) *VenueService {
 	return &VenueService{repo: repo}
 }
 
-func (s *VenueService) Create(venue *models.Venue, orgID uuid.UUID) error {
+func (s *VenueService) Create(ctx context.Context, venue *models.Venue, orgID uuid.UUID) error {
 	if venue.Name == "" {
 		return errors.New("venue name is required")
 	}
@@ -50,15 +51,15 @@ func (s *VenueService) Create(venue *models.Venue, orgID uuid.UUID) error {
 	return s.repo.Create(venue, orgID)
 }
 
-func (s *VenueService) GetByID(id uuid.UUID, orgID uuid.UUID) (*models.Venue, error) {
+func (s *VenueService) GetByID(ctx context.Context, id uuid.UUID, orgID uuid.UUID) (*models.Venue, error) {
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *VenueService) GetByIDUnscoped(id uuid.UUID) (*models.Venue, error) {
+func (s *VenueService) GetByIDUnscoped(ctx context.Context, id uuid.UUID) (*models.Venue, error) {
 	return s.repo.GetByIDUnscoped(id)
 }
 
-func (s *VenueService) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType string, from, to *time.Time) ([]models.Venue, error) {
+func (s *VenueService) GuestList(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, venueType string, from, to *time.Time) ([]models.Venue, error) {
 	if venueType != "" && !models.ValidVenueTypes[venueType] {
 		return nil, errors.New("invalid venue type filter")
 	}
@@ -68,7 +69,7 @@ func (s *VenueService) GuestList(orgID uuid.UUID, branchID *uuid.UUID, venueType
 	return s.repo.GuestList(orgID, branchID, venueType, from, to)
 }
 
-func (s *VenueService) List(orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, from, to *time.Time, page, pageSize int) ([]models.Venue, int, error) {
+func (s *VenueService) List(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, venueType string, isAvailable *bool, from, to *time.Time, page, pageSize int) ([]models.Venue, int, error) {
 	if venueType != "" && !models.ValidVenueTypes[venueType] {
 		return nil, 0, errors.New("invalid venue type filter")
 	}
@@ -86,7 +87,7 @@ func validateDateRange(from, to *time.Time) error {
 	return nil
 }
 
-func (s *VenueService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Venue) (*models.Venue, error) {
+func (s *VenueService) Update(ctx context.Context, id uuid.UUID, orgID uuid.UUID, updates *models.Venue) (*models.Venue, error) {
 	venue, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("venue not found")
@@ -131,7 +132,7 @@ func (s *VenueService) Update(id uuid.UUID, orgID uuid.UUID, updates *models.Ven
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *VenueService) UpdateImages(id uuid.UUID, orgID uuid.UUID, images []string) (*models.Venue, error) {
+func (s *VenueService) UpdateImages(ctx context.Context, id uuid.UUID, orgID uuid.UUID, images []string) (*models.Venue, error) {
 	_, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return nil, errors.New("venue not found")
@@ -145,7 +146,7 @@ func (s *VenueService) UpdateImages(id uuid.UUID, orgID uuid.UUID, images []stri
 	return s.repo.GetByID(id, orgID)
 }
 
-func (s *VenueService) SetAvailability(id uuid.UUID, orgID uuid.UUID, available bool) error {
+func (s *VenueService) SetAvailability(ctx context.Context, id uuid.UUID, orgID uuid.UUID, available bool) error {
 	_, err := s.repo.GetByID(id, orgID)
 	if err != nil {
 		return errors.New("venue not found")
@@ -153,6 +154,6 @@ func (s *VenueService) SetAvailability(id uuid.UUID, orgID uuid.UUID, available 
 	return s.repo.SetAvailability(id, orgID, available)
 }
 
-func (s *VenueService) Delete(id uuid.UUID, orgID uuid.UUID) error {
+func (s *VenueService) Delete(ctx context.Context, id uuid.UUID, orgID uuid.UUID) error {
 	return s.repo.Delete(id, orgID)
 }

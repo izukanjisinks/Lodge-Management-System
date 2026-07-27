@@ -1,25 +1,25 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type BackofficeOrganizationHandler struct {
-	service *services.BackofficeOrganizationService
+	service interfaces.BackofficeOrganizationInterface
 }
 
-func NewBackofficeOrganizationHandler(service *services.BackofficeOrganizationService) *BackofficeOrganizationHandler {
+func NewBackofficeOrganizationHandler(service interfaces.BackofficeOrganizationInterface) *BackofficeOrganizationHandler {
 	return &BackofficeOrganizationHandler{service: service}
 }
 
 func (h *BackofficeOrganizationHandler) List(w http.ResponseWriter, r *http.Request) {
-	orgs, err := h.service.List()
+	orgs, err := h.service.List(r.Context())
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to retrieve organizations")
 		return
@@ -40,7 +40,7 @@ func (h *BackofficeOrganizationHandler) GetByID(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	org, err := h.service.GetByID(id)
+	org, err := h.service.GetByID(r.Context(), id)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Organization not found")
 		return
@@ -62,7 +62,7 @@ func (h *BackofficeOrganizationHandler) Update(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	org, err := h.service.Update(id, req)
+	org, err := h.service.Update(r.Context(), id, req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -86,7 +86,7 @@ func (h *BackofficeOrganizationHandler) ToggleStatus(w http.ResponseWriter, r *h
 		return
 	}
 
-	org, err := h.service.ToggleStatus(id, req.IsActive)
+	org, err := h.service.ToggleStatus(r.Context(), id, req.IsActive)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -102,7 +102,7 @@ func (h *BackofficeOrganizationHandler) Delete(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(r.Context(), id); err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
 	}
@@ -117,7 +117,7 @@ func (h *BackofficeOrganizationHandler) Provision(w http.ResponseWriter, r *http
 		return
 	}
 
-	org, admin, err := h.service.Provision(req)
+	org, admin, err := h.service.Provision(r.Context(), req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return

@@ -1,19 +1,19 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 )
 
 type WebUserAuthHandler struct {
-	service *services.WebUserAuthService
+	service interfaces.WebUserAuthInterface
 }
 
-func NewWebUserAuthHandler(service *services.WebUserAuthService) *WebUserAuthHandler {
+func NewWebUserAuthHandler(service interfaces.WebUserAuthInterface) *WebUserAuthHandler {
 	return &WebUserAuthHandler{service: service}
 }
 
@@ -25,7 +25,7 @@ func (h *WebUserAuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.Register(&req)
+	user, err := h.service.Register(r.Context(), &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -44,7 +44,7 @@ func (h *WebUserAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.service.Login(&req)
+	user, token, err := h.service.Login(r.Context(), &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -64,7 +64,7 @@ func (h *WebUserAuthHandler) GetProfile(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	user, err := h.service.GetByID(userID)
+	user, err := h.service.GetByID(r.Context(), userID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return
@@ -87,7 +87,7 @@ func (h *WebUserAuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	user, err := h.service.Update(userID, &req)
+	user, err := h.service.Update(r.Context(), userID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -113,7 +113,7 @@ func (h *WebUserAuthHandler) ChangePassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if err := h.service.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
+	if err := h.service.ChangePassword(r.Context(), userID, req.OldPassword, req.NewPassword); err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
 	}

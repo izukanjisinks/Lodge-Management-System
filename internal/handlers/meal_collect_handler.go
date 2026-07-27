@@ -26,7 +26,7 @@ func (h *MealCollectionHandler) Collect(w http.ResponseWriter, r *http.Request) 
 		utils.RespondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	result, err := h.service.Collect(orgID, sessionID, staffID, staffName, &req)
+	result, err := h.service.Collect(r.Context(), orgID, sessionID, staffID, staffName, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -43,7 +43,7 @@ func (h *MealCollectionHandler) GetCurrentStay(w http.ResponseWriter, r *http.Re
 		utils.RespondError(w, http.StatusBadRequest, "invalid room id")
 		return
 	}
-	stay, err := h.service.GetCurrentStay(orgID, roomID)
+	stay, err := h.service.GetCurrentStay(r.Context(), orgID, roomID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, err.Error())
 		return

@@ -1,18 +1,18 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"lodge-system/internal/middleware"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 	"net/http"
 	"time"
 )
 
 type AuditLogHandler struct {
-	service *services.AuditLogService
+	service interfaces.AuditLogInterface
 }
 
-func NewAuditLogHandler(service *services.AuditLogService) *AuditLogHandler {
+func NewAuditLogHandler(service interfaces.AuditLogInterface) *AuditLogHandler {
 	return &AuditLogHandler{service: service}
 }
 
@@ -37,7 +37,7 @@ func (h *AuditLogHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, total, err := h.service.List(orgID, entityType, entityID, action, from, to, p.Page, p.PageSize)
+	logs, total, err := h.service.List(r.Context(), orgID, entityType, entityID, action, from, to, p.Page, p.PageSize)
 	if err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to fetch audit logs")
 		return

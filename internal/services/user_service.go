@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -33,7 +34,7 @@ func (s *UserService) SetPasswordPolicyService(policyService *PasswordPolicyServ
 	s.passwordPolicyService = policyService
 }
 
-func (s *UserService) Register(user *models.User) error {
+func (s *UserService) Register(ctx context.Context, user *models.User) error {
 	orgID := uuid.Nil
 	if user.OrgID != nil {
 		orgID = *user.OrgID
@@ -47,7 +48,7 @@ func (s *UserService) Register(user *models.User) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		if err := s.passwordPolicyService.ValidateNewPassword(uuid.Nil, user.Password, "", orgID); err != nil {
+		if err := s.passwordPolicyService.ValidateNewPassword(ctx, uuid.Nil, user.Password, "", orgID); err != nil {
 			return err
 		}
 	}
@@ -76,7 +77,7 @@ func (s *UserService) Register(user *models.User) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(orgID)
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(ctx, orgID)
 	}
 
 	if err := s.repo.Create(user); err != nil {
@@ -84,7 +85,7 @@ func (s *UserService) Register(user *models.User) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		_ = s.passwordPolicyService.RecordPasswordChange(user.UserID, hashed)
+		_ = s.passwordPolicyService.RecordPasswordChange(ctx, user.UserID, hashed)
 	}
 
 	if s.emailService != nil {
@@ -101,8 +102,8 @@ func (s *UserService) Register(user *models.User) error {
 	return nil
 }
 
-func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, error) {
-	return s.LoginWithOrg(emailAddr, pwd, uuid.Nil)
+func (s *UserService) Login(ctx context.Context, emailAddr, pwd string) (map[string]interface{}, error) {
+	return s.LoginWithOrg(ctx, emailAddr, pwd, uuid.Nil)
 }
 
 // LoginWithOrg handles both steps of the multi-org login flow.
@@ -111,7 +112,7 @@ func (s *UserService) Login(emailAddr, pwd string) (map[string]interface{}, erro
 // - 1 match   → proceed to password check
 // - 2+ matches → return org list for selection (no password check)
 // When orgID is provided, it scopes the lookup to that specific org.
-func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[string]interface{}, error) {
+func (s *UserService) LoginWithOrg(ctx context.Context, emailAddr, pwd string, orgID uuid.UUID) (map[string]interface{}, error) {
 	var user *models.User
 
 	if orgID == uuid.Nil {
@@ -154,7 +155,7 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 	}
 
 	if s.passwordPolicyService != nil {
-		locked, reason := s.passwordPolicyService.CheckAccountLockout(user)
+		locked, reason := s.passwordPolicyService.CheckAccountLockout(ctx, user)
 		if locked {
 			return nil, errors.New(reason)
 		}
@@ -163,8 +164,8 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 	if err := utils.ComparePasswords(user.Password, pwd); err != nil {
 		if s.passwordPolicyService != nil {
 			user.FailedLoginAttempts++
-			if s.passwordPolicyService.ShouldLockAccount(user.FailedLoginAttempts, userOrgID) {
-				lockoutTime := s.passwordPolicyService.CalculateLockoutTime(userOrgID)
+			if s.passwordPolicyService.ShouldLockAccount(ctx, user.FailedLoginAttempts, userOrgID) {
+				lockoutTime := s.passwordPolicyService.CalculateLockoutTime(ctx, userOrgID)
 				user.LockedUntil = &lockoutTime
 			}
 			_ = s.repo.Update(user)
@@ -182,7 +183,7 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 	var passwordExpiringSoon bool
 	var daysUntilExpiry int
 	if s.passwordPolicyService != nil {
-		passwordExpired, passwordExpiringSoon, daysUntilExpiry = s.passwordPolicyService.CheckPasswordExpiry(user)
+		passwordExpired, passwordExpiringSoon, daysUntilExpiry = s.passwordPolicyService.CheckPasswordExpiry(ctx, user)
 		if passwordExpired {
 			return nil, errors.New("password has expired, please change your password")
 		}
@@ -190,7 +191,7 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 
 	var tokenExpiry time.Duration
 	if s.passwordPolicyService != nil {
-		tokenExpiry = time.Duration(s.passwordPolicyService.GetSessionTimeout(userOrgID)) * time.Second
+		tokenExpiry = time.Duration(s.passwordPolicyService.GetSessionTimeout(ctx, userOrgID)) * time.Second
 	} else {
 		tokenExpiry = 24 * time.Hour
 	}
@@ -235,19 +236,19 @@ func (s *UserService) LoginWithOrg(emailAddr, pwd string, orgID uuid.UUID) (map[
 	return response, nil
 }
 
-func (s *UserService) GetAllUsers() ([]models.User, error) {
+func (s *UserService) GetAllUsers(ctx context.Context) ([]models.User, error) {
 	return s.repo.GetAllUsers()
 }
 
-func (s *UserService) ListUsers(orgID uuid.UUID, branchID *uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
+func (s *UserService) ListUsers(ctx context.Context, orgID uuid.UUID, branchID *uuid.UUID, search string, roleID *uuid.UUID, isActive *bool, page, pageSize int) ([]models.User, int, error) {
 	return s.repo.List(orgID, branchID, search, roleID, isActive, page, pageSize)
 }
 
-func (s *UserService) GetUserByID(id uuid.UUID) (*models.User, error) {
+func (s *UserService) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	return s.repo.GetUserByID(id)
 }
 
-func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
+func (s *UserService) UpdateUser(ctx context.Context, updates *models.User) (*models.User, error) {
 	existing, err := s.repo.GetUserByID(updates.UserID)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -282,7 +283,7 @@ func (s *UserService) UpdateUser(updates *models.User) (*models.User, error) {
 // UpdateUserFull handles the frontend PUT /users/{id} payload: full_name, email, role name, status, optional password.
 // callerID is the ID of the user making the request — used to decide whether to send a password-change notification email.
 // If callerID == id (self-edit) no email is sent; if an admin changes someone else's password the user is notified.
-func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName, newEmail, pwd, roleName, status string, branchID *uuid.UUID) (*models.User, error) {
+func (s *UserService) UpdateUserFull(ctx context.Context, id uuid.UUID, callerID uuid.UUID, fullName, newEmail, pwd, roleName, status string, branchID *uuid.UUID) (*models.User, error) {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -336,7 +337,7 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 
 	if pwd != "" {
 		if s.passwordPolicyService != nil {
-			if err := s.passwordPolicyService.ValidateNewPassword(id, pwd, user.Password, updateOrgID); err != nil {
+			if err := s.passwordPolicyService.ValidateNewPassword(ctx, id, pwd, user.Password, updateOrgID); err != nil {
 				return nil, err
 			}
 		}
@@ -348,8 +349,8 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 		now := time.Now()
 		user.PasswordChangedAt = &now
 		if s.passwordPolicyService != nil {
-			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(updateOrgID)
-			_ = s.passwordPolicyService.RecordPasswordChange(id, hashed)
+			user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(ctx, updateOrgID)
+			_ = s.passwordPolicyService.RecordPasswordChange(ctx, id, hashed)
 		}
 
 		// Notify the user only when an admin/manager changed their password, not when self-editing
@@ -369,11 +370,11 @@ func (s *UserService) UpdateUserFull(id uuid.UUID, callerID uuid.UUID, fullName,
 	return s.repo.GetUserByID(id)
 }
 
-func (s *UserService) GetByEmail(emailAddr string) (*models.User, error) {
+func (s *UserService) GetByEmail(ctx context.Context, emailAddr string) (*models.User, error) {
 	return s.repo.GetUserByEmail(emailAddr)
 }
 
-func (s *UserService) ChangeUserRole(userID uuid.UUID, roleID uuid.UUID) (*models.User, error) {
+func (s *UserService) ChangeUserRole(ctx context.Context, userID uuid.UUID, roleID uuid.UUID) (*models.User, error) {
 	user, err := s.repo.GetUserByID(userID)
 	if err != nil {
 		return nil, errors.New("user not found")
@@ -385,7 +386,7 @@ func (s *UserService) ChangeUserRole(userID uuid.UUID, roleID uuid.UUID) (*model
 	return s.repo.GetUserByID(userID)
 }
 
-func (s *UserService) DeactivateUser(id uuid.UUID) error {
+func (s *UserService) DeactivateUser(ctx context.Context, id uuid.UUID) error {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -394,7 +395,7 @@ func (s *UserService) DeactivateUser(id uuid.UUID) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) DeleteUser(id, orgID uuid.UUID) error {
+func (s *UserService) DeleteUser(ctx context.Context, id, orgID uuid.UUID) error {
 	_, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -402,7 +403,7 @@ func (s *UserService) DeleteUser(id, orgID uuid.UUID) error {
 	return s.repo.Delete(id, orgID)
 }
 
-func (s *UserService) LockUser(id uuid.UUID) error {
+func (s *UserService) LockUser(ctx context.Context, id uuid.UUID) error {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -412,7 +413,7 @@ func (s *UserService) LockUser(id uuid.UUID) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) UnlockUser(id uuid.UUID) error {
+func (s *UserService) UnlockUser(ctx context.Context, id uuid.UUID) error {
 	user, err := s.repo.GetUserByID(id)
 	if err != nil {
 		return errors.New("user not found")
@@ -423,7 +424,7 @@ func (s *UserService) UnlockUser(id uuid.UUID) error {
 	return s.repo.Update(user)
 }
 
-func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword string) error {
+func (s *UserService) ChangePassword(ctx context.Context, userID uuid.UUID, oldPassword, newPassword string) error {
 	user, err := s.repo.GetUserByID(userID)
 	if err != nil {
 		return errors.New("user not found")
@@ -439,7 +440,7 @@ func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword 
 	}
 
 	if s.passwordPolicyService != nil {
-		if err := s.passwordPolicyService.ValidateNewPassword(userID, newPassword, user.Password, changeOrgID); err != nil {
+		if err := s.passwordPolicyService.ValidateNewPassword(ctx, userID, newPassword, user.Password, changeOrgID); err != nil {
 			return err
 		}
 	}
@@ -455,7 +456,7 @@ func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword 
 	user.ChangePassword = false
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(changeOrgID)
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(ctx, changeOrgID)
 	}
 
 	if err := s.repo.Update(user); err != nil {
@@ -463,13 +464,13 @@ func (s *UserService) ChangePassword(userID uuid.UUID, oldPassword, newPassword 
 	}
 
 	if s.passwordPolicyService != nil {
-		_ = s.passwordPolicyService.RecordPasswordChange(userID, hashed)
+		_ = s.passwordPolicyService.RecordPasswordChange(ctx, userID, hashed)
 	}
 
 	return nil
 }
 
-func (s *UserService) ResetPassword(userID uuid.UUID) error {
+func (s *UserService) ResetPassword(ctx context.Context, userID uuid.UUID) error {
 	user, err := s.repo.GetUserByID(userID)
 	if err != nil {
 		return errors.New("user not found")
@@ -499,7 +500,7 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 	user.LockedUntil = nil
 
 	if s.passwordPolicyService != nil {
-		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(resetOrgID)
+		user.PasswordExpiresAt = s.passwordPolicyService.CalculatePasswordExpiry(ctx, resetOrgID)
 	}
 
 	if err := s.repo.Update(user); err != nil {
@@ -507,7 +508,7 @@ func (s *UserService) ResetPassword(userID uuid.UUID) error {
 	}
 
 	if s.passwordPolicyService != nil {
-		_ = s.passwordPolicyService.RecordPasswordChange(userID, hashed)
+		_ = s.passwordPolicyService.RecordPasswordChange(ctx, userID, hashed)
 	}
 
 	if s.emailService != nil {

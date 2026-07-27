@@ -1,24 +1,24 @@
 package handlers
 
 import (
+	"lodge-system/internal/interfaces"
 	"net/http"
 
 	"lodge-system/internal/middleware"
 	"lodge-system/internal/models"
 	"lodge-system/internal/repository"
-	"lodge-system/internal/services"
 	"lodge-system/pkg/utils"
 
 	"github.com/google/uuid"
 )
 
 type GuestAuthHandler struct {
-	guestAuthService *services.GuestAuthService
+	guestAuthService interfaces.GuestAuthInterface
 	orgRepo          *repository.OrganizationRepository
 	branchRepo       *repository.BranchRepository
 }
 
-func NewGuestAuthHandler(guestAuthService *services.GuestAuthService, orgRepo *repository.OrganizationRepository, branchRepo *repository.BranchRepository) *GuestAuthHandler {
+func NewGuestAuthHandler(guestAuthService interfaces.GuestAuthInterface, orgRepo *repository.OrganizationRepository, branchRepo *repository.BranchRepository) *GuestAuthHandler {
 	return &GuestAuthHandler{guestAuthService: guestAuthService, orgRepo: orgRepo, branchRepo: branchRepo}
 }
 
@@ -30,7 +30,7 @@ func (h *GuestAuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	guest, err := h.guestAuthService.Register(&req)
+	guest, err := h.guestAuthService.Register(r.Context(), &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -59,7 +59,7 @@ func (h *GuestAuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	guest, token, err := h.guestAuthService.Login(req.Email, req.Password)
+	guest, token, err := h.guestAuthService.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		utils.RespondError(w, http.StatusUnauthorized, err.Error())
 		return
@@ -79,7 +79,7 @@ func (h *GuestAuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	guest, err := h.guestAuthService.GetByID(guestID)
+	guest, err := h.guestAuthService.GetByID(r.Context(), guestID)
 	if err != nil {
 		utils.RespondError(w, http.StatusNotFound, "Guest not found")
 		return
@@ -102,7 +102,7 @@ func (h *GuestAuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	guest, err := h.guestAuthService.UpdateProfile(guestID, &req)
+	guest, err := h.guestAuthService.UpdateProfile(r.Context(), guestID, &req)
 	if err != nil {
 		utils.RespondError(w, http.StatusBadRequest, err.Error())
 		return
@@ -167,7 +167,7 @@ func (h *GuestAuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := h.guestAuthService.ResetPassword(req.Email); err != nil {
+	if err := h.guestAuthService.ResetPassword(r.Context(), req.Email); err != nil {
 		utils.RespondError(w, http.StatusInternalServerError, "Failed to process reset request")
 		return
 	}

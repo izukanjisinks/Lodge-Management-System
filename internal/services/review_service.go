@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -22,7 +23,7 @@ func NewReviewService(
 	return &ReviewService{repo: repo, bookingRepo: bookingRepo}
 }
 
-func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest) (*models.Review, error) {
+func (s *ReviewService) Submit(ctx context.Context, userID uuid.UUID, req *models.SubmitReviewRequest) (*models.Review, error) {
 	if err := validateScores(req); err != nil {
 		return nil, err
 	}
@@ -64,7 +65,7 @@ func (s *ReviewService) Submit(userID uuid.UUID, req *models.SubmitReviewRequest
 	return review, nil
 }
 
-func (s *ReviewService) GetSummary() (*models.RatingSummary, error) {
+func (s *ReviewService) GetSummary(ctx context.Context) (*models.RatingSummary, error) {
 	return s.repo.GetSummary()
 }
 
